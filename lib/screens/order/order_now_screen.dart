@@ -3,11 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/company_model.dart';
-import '../../models/food_model.dart'; // FoodModel should now have .company and .companyName
-import '../../widgets/app_background.dart'; // Assuming you have this
-import '../company/company_menu_screen.dart'; // To navigate to a company's menu
-// If you have a screen to show food details or add to cart, import it here
-// import '../food/food_details_screen.dart';
+import '../../models/food_model.dart';
+import '../../widgets/app_background.dart';
+import '../company/company_menu_screen.dart'; // Ensure this screen is correctly implemented and imported
 
 class OrderNowScreen extends StatefulWidget {
   const OrderNowScreen({super.key});
@@ -25,9 +23,9 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
   List<CompanyModel> _initialCompanies = [];
   List<FoodModel> _initialFoods = [];
 
-  bool _isSearching = false; // True when actively performing a debounced search
-  bool _isLoadingInitial = true; // True when fetching initial suggestions
-  bool _isPerformingSearch = false; // True when the search text is not empty
+  bool _isLoadingInitial = true;
+  bool _isSearching = false; // True when a search API call is in progress
+  bool _isPerformingSearch = false; // True if searchController has text (UI state)
   String? _errorMessage;
 
   @override
@@ -53,17 +51,23 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
     });
 
     try {
-      final companiesData = await supabase
+      final companiesDataFuture = supabase
           .from('companies')
-          .select<List<Map<String, dynamic>>>()
+          .select() // Corrected
           .order('name', ascending: true)
-          .limit(5); // Suggest a few companies
+          .limit(5);
 
-      final foodsData = await supabase
+      final foodsDataFuture = supabase
           .from('foods')
-          .select<List<Map<String, dynamic>>>('*, companies(id, name, logo_url)') // Join to get company info
-          .order('created_at', ascending: false) // Show newest popular items
-          .limit(5); // Suggest a few food items
+          .select('*, companies(id, name, logo_url)') // Corrected
+          .order('created_at', ascending: false)
+          .limit(5);
+
+      final results = await Future.wait([companiesDataFuture, foodsDataFuture]);
+
+      // Supabase v2+ returns List<Map<String, dynamic>> directly on success
+      final List<Map<String, dynamic>> companiesData = List<Map<String, dynamic>>.from(results[0] as List<dynamic>);
+      final List<Map<String, dynamic>> foodsData = List<Map<String, dynamic>>.from(results[1] as List<dynamic>);
 
       if (mounted) {
         setState(() {
@@ -76,7 +80,7 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
       debugPrint('Supabase error fetching initial suggestions (OrderNowScreen): ${e.message}');
       if (mounted) {
         setState(() {
-          _errorMessage = 'Could not load suggestions.';
+          _errorMessage = 'Could not load suggestions: ${e.message}';
           _isLoadingInitial = false;
         });
       }
@@ -94,21 +98,23 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
   void _onSearchChanged() {
     if (!mounted) return;
 
-    setState(() {
-      _isPerformingSearch = _searchController.text.isNotEmpty;
-    });
+    final hasText = _searchController.text.isNotEmpty;
+    if (_isPerformingSearch != hasText) {
+      setState(() {
+        _isPerformingSearch = hasText;
+      });
+    }
 
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
       if (_searchController.text.isNotEmpty) {
         _performSearch(_searchController.text);
       } else {
-        if (mounted) {
-          setState(() {
-            _searchResults = [];
-            _isSearching = false; // No longer actively searching
-          });
-        }
+        setState(() {
+          _searchResults = [];
+          // _isSearching will be set to false by _performSearch or if it's not called
+        });
       }
     });
   }
@@ -116,42 +122,40 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
   Future<void> _performSearch(String query) async {
     if (!mounted) return;
     setState(() {
-      _isSearching = true; // Indicate that a search is in progress
+      _isSearching = true; // API call is now in progress
       _errorMessage = null;
     });
 
     try {
-      // Search for companies
       final companyResultsFuture = supabase
           .from('companies')
-          .select<List<Map<String, dynamic>>>()
-          .or('name.ilike.%$query%,description.ilike.%$query%') // Search in name and description
+          .select() // Corrected
+          .or('name.ilike.%$query%,description.ilike.%$query%')
           .limit(5);
 
-      // Search for foods, including their company's name
       final foodResultsFuture = supabase
           .from('foods')
-          .select<List<Map<String, dynamic>>>('*, companies(id, name, logo_url)')
+          .select('*, companies(id, name, logo_url)') // Corrected
           .or('name.ilike.%$query%,description.ilike.%$query%,companies.name.ilike.%$query%')
           .limit(10);
 
       final results = await Future.wait([companyResultsFuture, foodResultsFuture]);
 
-      final List<CompanyModel> companies = (results[0]).map((data) => CompanyModel.fromMap(data)).toList();
-      final List<FoodModel> foods = (results[1]).map((data) => FoodModel.fromMap(data)).toList();
+      final List<CompanyModel> companies = (List<Map<String, dynamic>>.from(results[0] as List<dynamic>)).map((data) => CompanyModel.fromMap(data)).toList();
+      final List<FoodModel> foods = (List<Map<String, dynamic>>.from(results[1] as List<dynamic>)).map((data) => FoodModel.fromMap(data)).toList();
 
       if (mounted) {
         setState(() {
-          _searchResults = [...companies, ...foods]; // Combine results
-          _isSearching = false;
+          _searchResults = [...companies, ...foods];
+          _isSearching = false; // API call finished
         });
       }
     } on PostgrestException catch (e) {
       debugPrint('Supabase search error (OrderNowScreen): ${e.message}');
       if (mounted) {
         setState(() {
-          _errorMessage = 'Search failed. Please try again.';
-          _isSearching = false;
+          _errorMessage = 'Search failed: ${e.message}';
+          _isSearching = false; // API call finished
         });
       }
     } catch (e, stackTrace) {
@@ -159,7 +163,7 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
       if (mounted) {
         setState(() {
           _errorMessage = 'An unexpected error occurred during search.';
-          _isSearching = false;
+          _isSearching = false; // API call finished
         });
       }
     }
@@ -169,7 +173,7 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => CompanyMenuScreen(
+        builder: (_) => CompanyMenuScreen( // Make sure CompanyMenuScreen is correctly set up
           companyId: company.id,
           companyName: company.name,
         ),
@@ -178,26 +182,30 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
   }
 
   void _navigateToFoodItem(FoodModel food) {
-    // Navigate to a FoodDetailsScreen or add directly to an order concept
-    // This assumes food.company is populated by the Supabase query & FoodModel.fromMap
-    if (food.company != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Tapped on ${food.name} from ${food.company!.name}')),
+    // Example: You might want to navigate to a food details screen or a company menu screen
+    // For now, just showing a SnackBar
+    if (food.companyId.isNotEmpty && food.company != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CompanyMenuScreen(
+            companyId: food.companyId,
+            companyName: food.company!.name,
+            // Optionally, you can pass the foodId to highlight it on the menu
+            // highlightedFoodId: food.id,
+          ),
+        ),
       );
-      // Example navigation (if you have a FoodDetailsScreen):
-      // Navigator.push(context, MaterialPageRoute(builder: (_) => FoodDetailsScreen(food: food, company: food.company!)));
     } else {
-      // Fallback if company details are missing for some reason
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Tapped on ${food.name}. Company details missing.')),
+        SnackBar(content: Text('Tapped on ${food.name}. Company details for navigation are missing.')),
       );
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    return AppBackground( // Assuming AppBackground provides a themed background
+    return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -219,23 +227,31 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: Theme.of(context).scaffoldBackgroundColor.withAlpha(150), // Slightly transparent fill
-                  suffixIcon: _isPerformingSearch
+                  fillColor: Theme.of(context).cardColor.withAlpha(200),
+                  suffixIcon: _isPerformingSearch && !_isSearching // Show clear only if there's text and not actively loading search results
                       ? IconButton(
                     icon: const Icon(Icons.clear),
                     onPressed: () {
                       _searchController.clear();
-                      // _searchResults will clear via _onSearchChanged
+                      // _onSearchChanged will handle resetting the state
                     },
+                  )
+                      : _isSearching // Show progress indicator if actively searching
+                      ? const Padding(
+                    padding: EdgeInsets.all(12.0),
+                    child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
                   )
                       : null,
                 ),
               ),
             ),
-            if (_errorMessage != null)
+            if (_errorMessage != null && !_isSearching) // Don't show error if a new search is loading
               Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent)),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent), textAlign: TextAlign.center),
               ),
             Expanded(
               child: _buildContent(),
@@ -247,50 +263,63 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
   }
 
   Widget _buildContent() {
-    // If actively typing and searching
-    if (_isPerformingSearch) {
-      if (_isSearching) { // While the debounced search is running
+    if (_isPerformingSearch) { // If user has typed something
+      if (_isSearching) { // If the search API call is in progress
         return const Center(child: CircularProgressIndicator());
       }
-      if (_searchResults.isEmpty && !_isSearching) {
+      if (_searchResults.isEmpty && !_isSearching && _errorMessage == null) { // Search finished, no results, no error
         return const Center(child: Text('No results found. Try a different search!'));
       }
-      return _buildSearchResultsList();
+      return _buildSearchResultsList(); // Display search results
     }
 
-    // Initial state or when search bar is empty
+    // Initial state (no search text)
     if (_isLoadingInitial) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_initialCompanies.isEmpty && _initialFoods.isEmpty && _errorMessage == null) {
-      return const Center(child: Text('Start by searching for your favorite food or restaurant.'));
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text(
+            'Start by searching for your favorite food or restaurant above!',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
     }
-    return _buildInitialSuggestionsList();
+    return _buildInitialSuggestionsList(); // Display initial suggestions
   }
 
   Widget _buildInitialSuggestionsList() {
-    if (_initialCompanies.isEmpty && _initialFoods.isEmpty) {
-      return const Center(child: Text("No initial suggestions available. Try searching!"));
+    if (_initialCompanies.isEmpty && _initialFoods.isEmpty && _errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(_errorMessage ?? "No initial suggestions available. Try searching!", textAlign: TextAlign.center),
+        ),
+      );
     }
+
 
     List<Widget> suggestionWidgets = [];
 
     if (_initialCompanies.isNotEmpty) {
       suggestionWidgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Text("Popular Restaurants", style: Theme.of(context).textTheme.titleLarge),
-          )
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
+          child: Text("Popular Restaurants", style: Theme.of(context).textTheme.titleLarge),
+        ),
       );
       suggestionWidgets.addAll(_initialCompanies.map((company) => _buildCompanyTile(company)).toList());
     }
 
     if (_initialFoods.isNotEmpty) {
       suggestionWidgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-            child: Text("Popular Dishes", style: Theme.of(context).textTheme.titleLarge),
-          )
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+          child: Text("Popular Dishes", style: Theme.of(context).textTheme.titleLarge),
+        ),
       );
       suggestionWidgets.addAll(_initialFoods.map((food) => _buildFoodTile(food)).toList());
     }
@@ -301,9 +330,9 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
     );
   }
 
-
   Widget _buildSearchResultsList() {
     return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 16),
       itemCount: _searchResults.length,
       itemBuilder: (context, index) {
         final item = _searchResults[index];
@@ -319,11 +348,13 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
 
   Widget _buildCompanyTile(CompanyModel company) {
     return ListTile(
-      leading: (company.logoUrl != null && company.logoUrl!.isNotEmpty && Uri.tryParse(company.logoUrl!)?.hasAbsolutePath == true)
+      leading: (company.logoUrl != null &&
+          company.logoUrl!.isNotEmpty &&
+          Uri.tryParse(company.logoUrl!)?.hasAbsolutePath == true)
           ? CircleAvatar(
         backgroundImage: NetworkImage(company.logoUrl!),
-        onBackgroundImageError: (_, __) {}, // Handle error if needed
-        backgroundColor: Colors.grey[200],
+        onBackgroundImageError: (_, __) {}, // Optional: Handle error
+        backgroundColor: Colors.grey[200], // Placeholder color
       )
           : CircleAvatar(
         backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
@@ -338,11 +369,12 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
   }
 
   Widget _buildFoodTile(FoodModel food) {
-    // The FoodModel is now expected to have `company` and `companyName` populated if joined.
-    final String companyName = food.companyName ?? food.company?.name ?? 'Unknown Restaurant';
+    final String companyName = food.company?.name ?? food.companyName ?? 'Unknown Restaurant';
 
     return ListTile(
-      leading: (food.imageUrl != null && food.imageUrl!.isNotEmpty && Uri.tryParse(food.imageUrl!)?.hasAbsolutePath == true)
+      leading: (food.imageUrl != null &&
+          food.imageUrl!.isNotEmpty &&
+          Uri.tryParse(food.imageUrl!)?.hasAbsolutePath == true)
           ? SizedBox(
         width: 50,
         height: 50,
@@ -351,8 +383,9 @@ class _OrderNowScreenState extends State<OrderNowScreen> {
           child: Image.network(
             food.imageUrl!,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) =>
-                Container(color: Colors.grey[200], child: const Icon(Icons.fastfood_outlined, color: Colors.grey)),
+            errorBuilder: (context, error, stackTrace) => Container(
+                color: Colors.grey[200],
+                child: const Icon(Icons.fastfood_outlined, color: Colors.grey)),
           ),
         ),
       )

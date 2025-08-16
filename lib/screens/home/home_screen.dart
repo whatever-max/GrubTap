@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/banner_model.dart';
- import '../../models/company_model.dart'; // Keep for other uses if any, or remove if only featured_company_model is used for this list
+import '../../models/company_model.dart'; // Keep for other uses if any, or remove if only featured_company_model is used for this list
 import '../../models/food_model.dart';
 import '../../models/featured_company_model.dart'; // Import the new model
 
@@ -31,9 +31,8 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
   final ScrollController _scrollController = ScrollController();
 
   List<BannerModel> _banners = [];
-  // Replace _featuredCompanies with _featuredCompanyEntries
   List<FeaturedCompanyModel> _featuredCompanyEntries = [];
-  List<FoodModel> _featuredFoods = []; // For the "Popular Dishes" section
+  List<FoodModel> _featuredFoods = [];
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -65,12 +64,13 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     });
 
     try {
+      // Corrected: Removed explicit type arguments from .select()
+      // The casting to List<Map<String, dynamic>> happens AFTER the Future resolves.
       final results = await Future.wait([
-        supabase.from('banners').select<List<Map<String, dynamic>>>().order('created_at', ascending: false).limit(5),
-        // Your new query for featured_companies
+        supabase.from('banners').select().order('created_at', ascending: false).limit(5),
         supabase
             .from('featured_companies')
-            .select<List<Map<String, dynamic>>>('''
+            .select(''' 
               id,
               highlight_text,
               created_at, 
@@ -90,23 +90,23 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
                 created_at
               )
             ''')
-            .order('created_at', ascending: false) // Order by featured_companies.created_at
+            .order('created_at', ascending: false)
             .limit(10),
-        supabase // For the "Popular Dishes" section (assuming these are globally featured foods)
+        supabase
             .from('foods')
-            .select<List<Map<String, dynamic>>>('*, companies(id, name, logo_url)')
-        // If you added 'is_featured' to foods table: .eq('is_featured', true)
+            .select('*, companies(id, name, logo_url)')
             .limit(10)
-            .order('created_at', ascending: false), // Or some other criteria like popularity
+            .order('created_at', ascending: false),
       ]);
 
       if (mounted) {
         setState(() {
-          _banners = (results[0] as List<Map<String, dynamic>>).map((data) => BannerModel.fromMap(data)).toList();
-          _featuredCompanyEntries = (results[1] as List<Map<String, dynamic>>)
-              .map((data) => FeaturedCompanyModel.fromMap(data))
+          // The results from Supabase v2+ are directly List<Map<String, dynamic>> if successful
+          _banners = (results[0] as List<dynamic>).map((data) => BannerModel.fromMap(data as Map<String, dynamic>)).toList();
+          _featuredCompanyEntries = (results[1] as List<dynamic>)
+              .map((data) => FeaturedCompanyModel.fromMap(data as Map<String, dynamic>))
               .toList();
-          _featuredFoods = (results[2] as List<Map<String, dynamic>>).map((data) => FoodModel.fromMap(data)).toList();
+          _featuredFoods = (results[2] as List<dynamic>).map((data) => FoodModel.fromMap(data as Map<String, dynamic>)).toList();
           _isLoading = false;
         });
       }
@@ -141,7 +141,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyListScreen()));
   }
 
-  // Update this to use FeaturedCompanyModel
   void _navigateToCompanyMenu(CompanyModel company) {
     if (company.id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -164,7 +163,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    // ... (rest of your build method, AppBar, etc. remains the same) ...
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -192,15 +190,14 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     }
 
     if (_errorMessage != null) {
-      // ... (error display remains the same) ...
       return RefreshIndicator(
         onRefresh: refreshData,
-        child: ListView( // Wrap in ListView to enable pull-to-refresh even for error
+        child: ListView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             Container(
-              height: MediaQuery.of(context).size.height * 0.7, // Ensure it's scrollable
+              height: MediaQuery.of(context).size.height * 0.7,
               alignment: Alignment.center,
               padding: const EdgeInsets.all(20.0),
               child: Column(
@@ -220,9 +217,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
       );
     }
 
-    // Update condition to use _featuredCompanyEntries
     if (_banners.isEmpty && _featuredCompanyEntries.isEmpty && _featuredFoods.isEmpty) {
-      // ... (empty content display remains the same, but the condition changed) ...
       return RefreshIndicator(
         onRefresh: refreshData,
         child: ListView(
@@ -258,9 +253,8 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         children: [
           if (_banners.isNotEmpty) _buildBannersSection(),
-          // Update to use _featuredCompanyEntries
-          if (_featuredCompanyEntries.isNotEmpty) _buildFeaturedCompaniesSectionNew(), // Renamed for clarity
-          if (_featuredFoods.isNotEmpty) _buildFeaturedFoodsSection(), // This is for "Popular Dishes"
+          if (_featuredCompanyEntries.isNotEmpty) _buildFeaturedCompaniesSectionNew(),
+          if (_featuredFoods.isNotEmpty) _buildFeaturedFoodsSection(),
           const SizedBox(height: 20),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -276,14 +270,13 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
               ),
             ),
           ),
-          const SizedBox(height: 70), // Space for FAB
+          const SizedBox(height: 70),
         ],
       ),
     );
   }
 
   Widget _buildBannersSection() {
-    // ... (this section remains the same) ...
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -321,7 +314,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     );
   }
 
-  // New method to build featured companies using FeaturedCompanyModel
   Widget _buildFeaturedCompaniesSectionNew() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,24 +323,24 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
           child: Text("Featured Restaurants", style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
         ),
         SizedBox(
-          height: 160, // Adjust height as needed
+          height: 160,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: _featuredCompanyEntries.length,
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
             itemBuilder: (ctx, i) {
               final featuredEntry = _featuredCompanyEntries[i];
-              final company = featuredEntry.company; // Get the CompanyModel from the entry
+              final company = featuredEntry.company;
 
               return SizedBox(
-                width: 140, // Adjust width as needed
+                width: 140,
                 child: Card(
                   margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   clipBehavior: Clip.antiAlias,
                   elevation: 2,
                   child: InkWell(
-                    onTap: () => _navigateToCompanyMenu(company), // Pass the CompanyModel
+                    onTap: () => _navigateToCompanyMenu(company),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -390,7 +382,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Optionally, display featured food name if available
                         if (featuredEntry.featuredFood != null)
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -418,9 +409,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
 
 
   Widget _buildFeaturedFoodsSection() {
-    // This section is for "Popular Dishes" (globally featured foods)
-    // It remains largely the same, but ensure it uses _featuredFoods
-    // ... (Make sure food.companyName or food.company.name is handled correctly as before) ...
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -436,8 +424,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
             itemBuilder: (ctx, i) {
               final food = _featuredFoods[i];
-              // Use food.companyName or food.company.name from the FoodModel
-              // Ensure your FoodModel's fromMap correctly parses the joined 'companies' data
               final String effectiveCompanyName = food.companyName ?? food.company?.name ?? "Restaurant";
 
               return SizedBox(
@@ -450,10 +436,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
                   child: InkWell(
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Tapped on ${food.name} from $effectiveCompanyName")));
-                      // Potentially navigate to food details:
-                      // if (food.company != null) { // Or if food.companyId is present and you want to fetch company details then
-                      //   Navigator.push(context, MaterialPageRoute(builder: (_) => FoodDetailsScreen(food: food, companyId: food.companyId!)));
-                      // }
                     },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1,6 +1,6 @@
 name: grubtap
-# MODIFIED: Changed description to your new one
 description: A new Flutter project for role-based user management with Supabase.
+
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -36,7 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8 # For iOS style icons
 
   # Supabase for backend, auth, and database
-  supabase_flutter: ^1.10.25 # Please verify LATEST on pub.dev
+  supabase_flutter: ^2.9.1 # Please verify LATEST on pub.dev
 
   # State management
   provider: ^6.1.2
@@ -53,12 +53,15 @@ dependencies:
   uuid: ^4.3.3 # Please verify LATEST on pub.dev
 
   # Formatting and internationalization
-  intl: ^0.19.0 # For date/number formatting
+  intl: ^0.20.2 # For date/number formatting
 
   # UI Enhancements & Utilities
   flutter_screenutil: ^5.9.0 # For responsive layouts
   flutter_spinkit: ^5.2.1 # Please verify LATEST on pub.dev (loading spinners)
-  email_validator: ^2.1.17 # For email validation
+  email_validator: ^3.0.0 # For email validation
+
+  # Authentication
+  sign_in_with_apple: ^7.0.1 # For Sign in with Apple functionality
 
 dev_dependencies:
   flutter_test:
@@ -69,7 +72,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^3.0.0 # Or ^4.0.0 if you prefer, check current Flutter recommendations
+  flutter_lints: ^6.0.0 # Or ^4.0.0 if you prefer, check current Flutter recommendations
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

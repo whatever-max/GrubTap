@@ -2,10 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/company_model.dart';
-// import 'company_menu_screen.dart'; // For navigation
+// import '../company/company_menu_screen.dart'; // Uncomment if you use it for navigation
 
 class CompanyListScreen extends StatefulWidget {
-  // Constructor no longer requires 'companies'
   const CompanyListScreen({super.key});
 
   @override
@@ -31,10 +30,12 @@ class _CompanyListScreenState extends State<CompanyListScreen> {
       _errorMessage = null;
     });
     try {
-      final data = await supabase
+      // Corrected: Removed explicit type argument from .select()
+      // The .select() directly returns List<Map<String, dynamic>> or throws PostgrestException.
+      final List<Map<String, dynamic>> data = await supabase
           .from('companies')
-          .select<List<Map<String, dynamic>>>()
-          .order('name', ascending: true); // Or any other order
+          .select() // Corrected
+          .order('name', ascending: true);
 
       if (mounted) {
         setState(() {
@@ -60,10 +61,11 @@ class _CompanyListScreenState extends State<CompanyListScreen> {
   }
 
   void _navigateToCompanyMenu(CompanyModel company) {
+    // If you have CompanyMenuScreen and want to navigate:
     // Navigator.push(
     //   context,
     //   MaterialPageRoute(
-    //     builder: (_) => CompanyMenuScreen(
+    //     builder: (_) => CompanyMenuScreen( // Ensure CompanyMenuScreen is imported
     //       companyId: company.id,
     //       companyName: company.name,
     //     ),
@@ -89,7 +91,20 @@ class _CompanyListScreenState extends State<CompanyListScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text("Retry"),
+                onPressed: _fetchAllCompanies,
+              )
+            ],
+          ),
         ),
       );
     }
@@ -101,9 +116,16 @@ class _CompanyListScreenState extends State<CompanyListScreen> {
       itemBuilder: (context, index) {
         final company = _allCompanies[index];
         return ListTile(
-          leading: company.logoUrl != null && company.logoUrl!.isNotEmpty
-              ? CircleAvatar(backgroundImage: NetworkImage(company.logoUrl!))
-              : const CircleAvatar(child: Icon(Icons.business)),
+          leading: (company.logoUrl != null && company.logoUrl!.isNotEmpty && Uri.tryParse(company.logoUrl!)?.hasAbsolutePath == true)
+              ? CircleAvatar(
+            backgroundImage: NetworkImage(company.logoUrl!),
+            onBackgroundImageError: (_, __) {}, // Optional: Handle error
+            backgroundColor: Colors.grey[200], // Placeholder color
+          )
+              : CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+            child: Icon(Icons.business, color: Theme.of(context).colorScheme.onSecondaryContainer),
+          ),
           title: Text(company.name),
           subtitle: Text(company.description ?? 'No description.', maxLines: 1, overflow: TextOverflow.ellipsis),
           onTap: () => _navigateToCompanyMenu(company),
@@ -112,3 +134,4 @@ class _CompanyListScreenState extends State<CompanyListScreen> {
     );
   }
 }
+

@@ -48,16 +48,21 @@ class _CompanyDetailsScreenState extends State<CompanyDetailsScreen> {
       // However, since we already have widget.company, we might not need to join here unless FoodModel
       // specifically needs the nested company object from the food query itself.
       // Your FoodModel.fromMap already handles a nested 'companies' map.
+
+      // CORRECTED LINE:
       final response = await _supabase
           .from('foods')
-          .select<List<Map<String, dynamic>>>() // Ensure type for Supabase query
+          .select() // Removed the generic type <List<Map<String, dynamic>>>
           .eq('company_id', widget.company.id)
-          .order('created_at', ascending: false); // Optional: order by creation date or name
+          .order('created_at', ascending: false);
 
       if (!mounted) return; // Check again after await
 
       // Parse the response into a list of FoodModel objects
-      _companyFoods = response.map((data) => FoodModel.fromMap(data)).toList();
+      // The 'response' will be a List<Map<String, dynamic>> if successful
+      _companyFoods = (response as List<dynamic>) // Cast to List<dynamic> first
+          .map((data) => FoodModel.fromMap(data as Map<String, dynamic>)) // Then cast each element
+          .toList();
 
       setState(() {
         _isLoading = false;

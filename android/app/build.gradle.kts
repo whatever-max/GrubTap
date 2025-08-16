@@ -32,7 +32,7 @@ fun getFlutterVersionName(): String {
 
 android {
     namespace = "com.example.grubtap"
-    compileSdk = 35 // ✅ *** UPDATED AS REQUIRED ***
+    compileSdk = 36 // ✅ *** UPDATED AS REQUIRED ***
 
     ndkVersion = "27.0.12077973" // Ensure this is appropriate for your project needs.
     // If you encounter NDK issues later, you might need to update this too.
@@ -50,11 +50,11 @@ android {
         applicationId = "com.example.grubtap"
 
         val minSdkString: String? = project.findProperty("flutter.minSdkVersion") as? String
-        minSdk = minSdkString?.toIntOrNull() ?: 21 // Keep this as determined by Flutter or your minimum requirement
+        minSdk = minSdkString?.toIntOrNull() ?: 24 // Keep this as determined by Flutter or your minimum requirement
 
         // Updated default for targetSdk to align better with compileSdk
         val targetSdkString: String? = project.findProperty("flutter.targetSdkVersion") as? String
-        targetSdk = targetSdkString?.toIntOrNull() ?: 35 // ✅ *** UPDATED DEFAULT FOR GOOD PRACTICE ***
+        targetSdk = targetSdkString?.toIntOrNull() ?: 36 // ✅ *** UPDATED DEFAULT FOR GOOD PRACTICE ***
 
         versionCode = getFlutterVersionCode()
         versionName = getFlutterVersionName()
