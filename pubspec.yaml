@@ -89,6 +89,7 @@ flutter:
   assets:
     # Make sure this exact file exists at project_root/assets/images/background.png
     - assets/images/my_background.jpg
+    - assets/images/default_avatar.png
     # To include all assets in a folder, list the folder name ending with a /
     - assets/images/   # Ensure this folder exists: project_root/assets/images/
     - assets/icons/    # Ensure this folder exists: project_root/assets/icons/

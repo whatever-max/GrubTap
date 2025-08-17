@@ -1,4 +1,3 @@
-// lib/screens/search/search_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -61,13 +60,13 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final List<Map<String, dynamic>> companyRaw = await supabase
+      final companyRaw = await supabase
           .from('companies')
           .select()
           .or('name.ilike.%$query%,description.ilike.%$query%')
           .limit(10);
 
-      final List<Map<String, dynamic>> foodRaw = await supabase
+      final foodRaw = await supabase
           .from('foods')
           .select('*, companies (id, name, description, logo_url)')
           .or('name.ilike.%$query%,description.ilike.%$query%')
@@ -119,35 +118,36 @@ class _SearchScreenState extends State<SearchScreen> {
                 Expanded(
                   child: ListView(
                     children: [
-                      if (_companyResults.isNotEmpty)
-                        ...[
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: Text('Restaurants', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
-                          ..._companyResults.map((c) => ListTile(
-                            leading: CircleAvatar(backgroundImage: NetworkImage(c.logoUrl)),
-                            title: Text(c.name),
-                            subtitle: Text(c.description),
-                          )),
-                        ],
-                      if (_foodResults.isNotEmpty)
-                        ...[
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: Text('Dishes', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
-                          ..._foodResults.map((f) => ListTile(
-                            leading: f.imageUrl != null
-                                ? ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(f.imageUrl!, width: 50, height: 50, fit: BoxFit.cover),
-                            )
-                                : const Icon(Icons.fastfood),
-                            title: Text(f.name),
-                            subtitle: Text('from ${f.companyName ?? "Unknown"} - \$${f.price.toStringAsFixed(2)}'),
-                          )),
-                        ]
+                      if (_companyResults.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Text('Restaurants', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        ..._companyResults.map((c) => ListTile(
+                          leading: c.logoUrl != null && c.logoUrl!.isNotEmpty
+                              ? CircleAvatar(backgroundImage: NetworkImage(c.logoUrl!))
+                              : const CircleAvatar(child: Icon(Icons.restaurant)),
+                          title: Text(c.name),
+                          subtitle: Text(c.description ?? 'No description'),
+                        )),
+                      ],
+                      if (_foodResults.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Text('Dishes', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        ..._foodResults.map((f) => ListTile(
+                          leading: f.imageUrl != null && f.imageUrl!.isNotEmpty
+                              ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(f.imageUrl!, width: 50, height: 50, fit: BoxFit.cover),
+                          )
+                              : const Icon(Icons.fastfood),
+                          title: Text(f.name),
+                          subtitle: Text(
+                              'from ${f.companyName ?? "Unknown"} - \$${f.price.toStringAsFixed(2)}'),
+                        )),
+                      ],
                     ],
                   ),
                 ),
