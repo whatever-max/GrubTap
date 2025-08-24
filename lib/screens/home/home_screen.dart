@@ -1,674 +1,748 @@
 // lib/screens/home/home_screen.dart
 import 'dart:async'; // For Timer
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart'; // For debugPrint
 
-import '../../models/banner_model.dart';
-import '../../models/company_model.dart';
-import '../../models/food_model.dart';
-import '../../models/featured_company_model.dart';
+// Model imports
+import '../../models/food_model.dart'; // Ensure this path is correct
 
-import '../../shared/custom_drawer.dart';
-import '../../widgets/app_background.dart';
+// Widget/Shared imports
+import '../../shared/custom_drawer.dart'; // Ensure this path is correct
+import '../../services/session_service.dart'; // Import SessionService to get role
 
-// Screen imports
-import '../company/company_list_screen.dart';
-import '../company/company_menu_screen.dart';
-import './notifications_screen.dart';
-import '../order/order_now_screen.dart';
-import '../food/food_details_screen.dart';
+// REMOVED: import '../../config/app_routes.dart';
 
 class HomeScreen extends StatefulWidget {
+  // Using a simple string literal for routeName
+  static const String routeName = '/home'; // <<<<<<< REVERTED
+
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMixin<HomeScreen> {
-  @override
-  bool get wantKeepAlive => true;
-
+class _HomeScreenState extends State<HomeScreen> {
   final supabase = Supabase.instance.client;
-  final ScrollController _scrollController = ScrollController();
-  PageController _bannerPageController = PageController();
-  Timer? _bannerTimer;
-  int _currentBannerPage = 0;
+  String? _currentUserRole;
 
-  List<BannerModel> _banners = [];
-  List<FeaturedCompanyModel> _featuredCompanyEntries = [];
-  List<FoodModel> _featuredFoods = [];
+  List<FoodModel> _allFoods = [];
+  bool _isLoadingFoods = true;
+  String? _foodListErrorMessage;
+  final TextEditingController _foodDropdownController = TextEditingController();
 
-  bool _isLoading = true;
-  String? _errorMessage;
+  FoodModel? _selectedFoodForOrder;
+  bool _isProcessingOrder = false;
+  String? _orderProcessingErrorMessage;
+  int _quantity = 1;
+
+  Timer? _cancelTimer;
+  int _cancelTimeRemaining = 180;
+  bool _canCancelOrder = false;
+  String? _orderIdForCancellation;
+  bool _orderSuccessfullyPlaced = false;
+  bool _orderWasCancelledByUser = false;
 
   @override
   void initState() {
     super.initState();
-    _bannerPageController = PageController(viewportFraction: 0.88, initialPage: 0);
-    _loadAllData().then((_) {
-      if (mounted && _banners.isNotEmpty) {
-        _startBannerAutoScroll();
+    debugPrint('[HomeScreen] initState called.');
+    _fetchUserRoleAndThenLoadFoods();
+  }
+
+  void setStateIfMounted(VoidCallback fn) {
+    if (mounted) {
+      setState(fn);
+    }
+  }
+
+  Future<void> _fetchUserRoleAndThenLoadFoods() async {
+    debugPrint('[HomeScreen] _fetchUserRoleAndThenLoadFoods: Fetching user role...');
+    String? fetchedRole = await SessionService.getUserRole();
+    if (!mounted) {
+      debugPrint('[HomeScreen] Component unmounted after role fetch.');
+      return;
+    }
+    debugPrint('[HomeScreen] _fetchUserRoleAndThenLoadFoods: Raw role fetched from SessionService: "$fetchedRole".');
+    setStateIfMounted(() {
+      if (fetchedRole == null || fetchedRole.isEmpty) {
+        _currentUserRole = 'user'; // Default to 'user'
+        debugPrint('[HomeScreen] Fetched role was null or empty, defaulting _currentUserRole to "user".');
+      } else {
+        _currentUserRole = fetchedRole;
       }
     });
+    debugPrint('[HomeScreen] _fetchUserRoleAndThenLoadFoods: _currentUserRole finally set to: "$_currentUserRole". Now loading foods.');
+    await _loadAllFoods();
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
-    _bannerPageController.dispose();
-    _bannerTimer?.cancel();
+    debugPrint('[HomeScreen] dispose called.');
+    _foodDropdownController.dispose();
+    _cancelTimer?.cancel();
     super.dispose();
   }
 
-  void _startBannerAutoScroll() {
-    _bannerTimer?.cancel(); // Cancel any existing timer
-    if (!mounted || _banners.length <= 1) return;
+  Future<void> _loadAllFoods() async {
+    debugPrint('[HomeScreen] _loadAllFoods: Starting to load foods...');
+    if (!mounted) {
+      debugPrint('[HomeScreen] _loadAllFoods: Unmounted. Aborting food load.');
+      return;
+    }
+    setStateIfMounted(() {
+      _isLoadingFoods = true;
+      _foodListErrorMessage = null;
+    });
 
-    _bannerTimer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
+    try {
+      final response = await supabase
+          .from('foods')
+          .select('id, name, price, description, image_url, company_id')
+          .order('name', ascending: true);
+
+      if (!mounted) {
+        debugPrint('[HomeScreen] _loadAllFoods: Unmounted after Supabase call.');
+        return;
+      }
+
+      if (response.isEmpty) {
+        _allFoods = [];
+        _foodListErrorMessage = "No food items available at the moment.";
+      } else {
+        _allFoods = response
+            .map((item) => FoodModel.fromMap(item as Map<String, dynamic>))
+            .toList();
+        _foodListErrorMessage = null;
+      }
+    } on PostgrestException catch (e) {
+      debugPrint('[HomeScreen] _loadAllFoods: Supabase Error - ${e.code}: ${e.message}');
+      if (mounted) {
+        _foodListErrorMessage = 'Failed to load food items: ${e.message}';
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] _loadAllFoods: Generic Error - $e');
+      if (mounted) {
+        _foodListErrorMessage = 'An unexpected error occurred: ${e.toString()}';
+      }
+    } finally {
+      if (mounted) {
+        setStateIfMounted(() {
+          _isLoadingFoods = false;
+        });
+      }
+    }
+  }
+
+  void _onFoodSelectedFromDropdown(FoodModel? food) {
+    setStateIfMounted(() {
+      _selectedFoodForOrder = food;
+      if (food != null) {
+        _quantity = 1;
+        _orderProcessingErrorMessage = null;
+        _isProcessingOrder = false;
+        _orderSuccessfullyPlaced = false;
+        _orderWasCancelledByUser = false;
+        _canCancelOrder = false;
+        _orderIdForCancellation = null;
+        _cancelTimer?.cancel();
+      } else {
+        _clearOrderDetails();
+      }
+    });
+  }
+
+  void _clearOrderDetails() {
+    setStateIfMounted(() {
+      _selectedFoodForOrder = null;
+      _foodDropdownController.clear();
+      _quantity = 1;
+      _isProcessingOrder = false;
+      _orderProcessingErrorMessage = null;
+      _cancelTimer?.cancel();
+      _canCancelOrder = false;
+      _orderIdForCancellation = null;
+      _orderSuccessfullyPlaced = false;
+      _orderWasCancelledByUser = false;
+    });
+  }
+
+  void _startCancelTimer(String orderId) {
+    _orderIdForCancellation = orderId;
+    _canCancelOrder = true;
+    _orderSuccessfullyPlaced = false;
+    _orderWasCancelledByUser = false;
+    _cancelTimeRemaining = 180;
+
+    if (!mounted) return;
+    setStateIfMounted(() {}); // Update UI
+
+    _cancelTimer?.cancel();
+    _cancelTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
-      if (_currentBannerPage < _banners.length - 1) {
-        _currentBannerPage++;
-      } else {
-        _currentBannerPage = 0;
-      }
-      if (_bannerPageController.hasClients) {
-        _bannerPageController.animateToPage(
-          _currentBannerPage,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
-  }
-
-  Future<void> refreshData() async {
-    if (_scrollController.hasClients && _scrollController.offset > 0) {
-      _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    }
-    await _loadAllData();
-    if (mounted) {
-      if (_banners.isNotEmpty) {
-        _currentBannerPage = 0; // Reset banner page
-        if (_bannerPageController.hasClients) _bannerPageController.jumpToPage(0);
-        _startBannerAutoScroll(); // Restart auto-scroll
-      } else {
-        _bannerTimer?.cancel(); // Stop timer if no banners
-      }
-    }
-  }
-
-  Future<void> _loadAllData() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final results = await Future.wait([
-        supabase.from('banners').select().order('created_at', ascending: false).limit(5),
-        supabase
-            .from('featured_companies')
-            .select('''
-              id,
-              highlight_text,
-              created_at,
-              companies (
-                id,
-                name,
-                description,
-                logo_url,
-                created_at
-              ),
-              foods (
-                id,
-                name,
-                price,
-                image_url,
-                company_id,
-                description,
-                created_at
-              )
-            ''')
-            .order('created_at', ascending: false)
-            .limit(10),
-        supabase
-            .from('foods')
-            .select('*, companies(id, name, logo_url)')
-            .limit(10)
-            .order('created_at', ascending: false),
-      ]);
-
-      if (!mounted) return;
-
-      final bannerData = results[0] as List<dynamic>;
-      final featuredCompanyData = results[1] as List<dynamic>;
-      final featuredFoodData = results[2] as List<dynamic>;
-
-      setState(() {
-        _banners = bannerData.map((data) => BannerModel.fromMap(data as Map<String, dynamic>)).toList();
-
-        // This assumes your FeaturedCompanyModel.fromMap is now structured
-        // to correctly create its FoodModel (featuredFood) with the necessary
-        // company context passed to FoodModel.fromMap.
-        _featuredCompanyEntries = featuredCompanyData.map((data) {
-          return FeaturedCompanyModel.fromMap(data as Map<String, dynamic>);
-        }).toList();
-
-        _featuredFoods = featuredFoodData.map((data) => FoodModel.fromMap(data as Map<String, dynamic>)).toList();
-
-        _isLoading = false;
+      setStateIfMounted(() {
+        if (_cancelTimeRemaining > 0) {
+          _cancelTimeRemaining--;
+        } else {
+          _canCancelOrder = false;
+          _orderSuccessfullyPlaced = true;
+          timer.cancel();
+        }
       });
+    });
+  }
 
-    } on PostgrestException catch (e) {
-      debugPrint('Supabase Postgrest Error (HomeScreen): ${e.message}');
+  Future<void> _sendOrder() async {
+    if (_selectedFoodForOrder == null) {
       if (mounted) {
-        setState(() {
-          _errorMessage = 'Failed to load data. Please check your connection and try again. (${e.code})';
-          _isLoading = false;
-        });
-      }
-    } catch (e, stackTrace) {
-      debugPrint('Unexpected error loading data (HomeScreen): $e \n$stackTrace');
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'An unexpected error occurred: $e';
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _onSearchPressed() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyListScreen(isSearchFocused: true)));
-  }
-
-  void _onNotificationsPressed() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
-  }
-
-  void _goToAllCompanies() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyListScreen()));
-  }
-
-  void _navigateToCompanyMenu(CompanyModel company) {
-    if (company.id.isEmpty) {
-      if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Company ID is missing.")),
+          const SnackBar(content: Text('Please select a food item first.'), backgroundColor: Colors.orange),
         );
       }
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CompanyMenuScreen(
-          companyId: company.id,
-          companyName: company.name,
+
+    setStateIfMounted(() {
+      _isProcessingOrder = true;
+      _orderProcessingErrorMessage = null;
+      _orderSuccessfullyPlaced = false;
+      _orderWasCancelledByUser = false;
+    });
+
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception("You must be logged in to send an order.");
+      }
+
+      final mainOrderData = {
+        'user_id': user.id,
+        'company_id': _selectedFoodForOrder!.profileId,
+        'status': 'sent',
+        'order_time': DateTime.now().toUtc().toIso8601String(),
+      };
+
+      final List<dynamic> orderResponse = await supabase
+          .from('orders')
+          .insert(mainOrderData)
+          .select('id');
+
+      if (orderResponse.isEmpty || orderResponse.first['id'] == null) {
+        throw Exception('Failed to create main order record. No ID returned.');
+      }
+      final String newOrderId = orderResponse.first['id'].toString();
+
+      final orderItemData = {
+        'order_id': newOrderId,
+        'food_id': _selectedFoodForOrder!.id,
+        'quantity': _quantity,
+        'item_price': _selectedFoodForOrder!.price,
+      };
+
+      await supabase.from('order_items').insert(orderItemData);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order sent! You can cancel shortly.'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _startCancelTimer(newOrderId);
+      }
+    } on PostgrestException catch (e) {
+      debugPrint("[HomeScreen:SendOrder] Supabase Error: ${e.code} - ${e.message}");
+      if (mounted) {
+        setStateIfMounted(() {
+          _orderProcessingErrorMessage = "Failed to send order: ${e.message}. Please try again.";
+        });
+      }
+    } catch (e) {
+      debugPrint("[HomeScreen:SendOrder] Generic Error: $e");
+      if (mounted) {
+        setStateIfMounted(() {
+          _orderProcessingErrorMessage = "An unexpected error occurred: ${e.toString()}";
+        });
+      }
+    } finally {
+      if (mounted) {
+        setStateIfMounted(() {
+          _isProcessingOrder = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _cancelOrder() async {
+    if (_orderIdForCancellation == null) {
+      if (mounted) {
+        setStateIfMounted(() => _orderProcessingErrorMessage = "No order ID found to cancel.");
+      }
+      return;
+    }
+
+    setStateIfMounted(() {
+      _isProcessingOrder = true;
+      _orderProcessingErrorMessage = null;
+    });
+
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) throw Exception("User not found. Cannot cancel order.");
+
+      await supabase
+          .from('orders')
+          .update({'status': 'cancelled_by_user'})
+          .eq('id', _orderIdForCancellation!)
+          .eq('user_id', user.id);
+
+      if (mounted) {
+        _cancelTimer?.cancel();
+        setStateIfMounted(() {
+          _canCancelOrder = false;
+          _orderWasCancelledByUser = true;
+          _orderSuccessfullyPlaced = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order cancelled successfully.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } on PostgrestException catch (e) {
+      debugPrint("[HomeScreen:CancelOrder] Supabase Error: ${e.message}");
+      if (mounted) {
+        setStateIfMounted(() {
+          _orderProcessingErrorMessage = "Failed to cancel order: ${e.message}";
+        });
+      }
+    } catch (e) {
+      debugPrint("[HomeScreen:CancelOrder] Generic Error: $e");
+      if (mounted) {
+        setStateIfMounted(() {
+          _orderProcessingErrorMessage = "Error cancelling order: ${e.toString()}";
+        });
+      }
+    } finally {
+      if (mounted) {
+        setStateIfMounted(() {
+          _isProcessingOrder = false;
+        });
+      }
+    }
+  }
+
+  String _formatDuration(int totalSeconds) {
+    final duration = Duration(seconds: totalSeconds);
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$minutes:$seconds";
+  }
+
+  // Responsive layout helpers (still useful for content within the page)
+  static const double _kMobileBreakpoint = 600;
+  static const double _kTabletBreakpoint = 900;
+
+  bool _isMobile(BuildContext context) => MediaQuery.of(context).size.width < _kMobileBreakpoint;
+  bool _isTablet(BuildContext context) =>
+      MediaQuery.of(context).size.width >= _kMobileBreakpoint &&
+          MediaQuery.of(context).size.width < _kTabletBreakpoint;
+  // bool _isDesktop(BuildContext context) => MediaQuery.of(context).size.width >= _kTabletBreakpoint; // Not used for drawer decision
+
+  Widget _buildFoodDropdown(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_isLoadingFoods && _allFoods.isEmpty && _foodListErrorMessage == null) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 20.0),
+        child: CircularProgressIndicator(key: ValueKey("FoodDropdownLoading")),
+      ));
+    }
+    if (_foodListErrorMessage != null && _allFoods.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, color: theme.colorScheme.error, size: 48),
+              const SizedBox(height: 10),
+              Text(
+                _foodListErrorMessage!,
+                style: TextStyle(color: theme.colorScheme.error, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text("Retry"),
+                onPressed: _loadAllFoods,
+                style: theme.elevatedButtonTheme.style,
+              )
+            ],
+          ),
+        ),
+      );
+    }
+    if (!_isLoadingFoods && _allFoods.isEmpty && _foodListErrorMessage == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
+          child: Text(
+            "No food items are currently available to order.",
+            style: TextStyle(fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    double dropdownWidth = _isMobile(context) ? double.infinity : (_isTablet(context) ? 500 : 600);
+    return Container(
+      width: dropdownWidth,
+      alignment: Alignment.center,
+      child: DropdownMenu<FoodModel>(
+        controller: _foodDropdownController,
+        requestFocusOnTap: true,
+        label: const Text('Select Food Item'),
+        width: dropdownWidth == double.infinity ? null : dropdownWidth,
+        expandedInsets: EdgeInsets.zero,
+        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+          fillColor: theme.inputDecorationTheme.fillColor ?? theme.colorScheme.surfaceVariant.withOpacity(0.5),
+        ),
+        onSelected: _onFoodSelectedFromDropdown,
+        dropdownMenuEntries: _allFoods.map<DropdownMenuEntry<FoodModel>>((FoodModel food) {
+          return DropdownMenuEntry<FoodModel>(
+            value: food,
+            label: "${food.name} - TSh ${food.price.toStringAsFixed(0)}/=",
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildOrderConfirmationSection(BuildContext context) {
+    if (_selectedFoodForOrder == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final totalPrice = _selectedFoodForOrder!.price * _quantity;
+
+    final bool showSendButton = _orderIdForCancellation == null && !_orderSuccessfullyPlaced && !_orderWasCancelledByUser;
+    final bool showCancelButtonView = _orderIdForCancellation != null && _canCancelOrder && !_orderWasCancelledByUser;
+    final bool showOrderPlacedMessage = _orderIdForCancellation != null && _orderSuccessfullyPlaced && !_canCancelOrder && !_orderWasCancelledByUser;
+    final bool showOrderCancelledMessage = _orderIdForCancellation != null && _orderWasCancelledByUser;
+
+    double cardWidth = _isMobile(context) ? double.infinity : (_isTablet(context) ? 500 : 600);
+    double imageSize = _isMobile(context) ? 120 : 150;
+
+    Widget imageDisplayWidget;
+    if (_selectedFoodForOrder!.imageUrl != null && _selectedFoodForOrder!.imageUrl!.isNotEmpty) {
+      imageDisplayWidget = Image.network(
+        _selectedFoodForOrder!.imageUrl!,
+        height: imageSize,
+        width: _isMobile(context) ? double.infinity : imageSize * 1.5,
+        fit: BoxFit.cover,
+        loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            height: imageSize,
+            width: _isMobile(context) ? double.infinity : imageSize * 1.5,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            child: Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                    : null,
+                strokeWidth: 2.0,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
+          debugPrint("Error loading image from Image.network: $exception");
+          return Container(
+            height: imageSize,
+            width: _isMobile(context) ? double.infinity : imageSize * 1.5,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceVariant,
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            child: Icon(Icons.broken_image_outlined, size: imageSize * 0.6, color: theme.colorScheme.onSurfaceVariant),
+          );
+        },
+      );
+    } else {
+      imageDisplayWidget = Container(
+        height: imageSize,
+        width: _isMobile(context) ? double.infinity : imageSize * 1.5,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: Icon(Icons.fastfood_outlined, size: imageSize * 0.6, color: theme.colorScheme.onSurfaceVariant),
+      );
+    }
+
+    return Center(
+      child: Container(
+        width: cardWidth,
+        child: Card(
+          margin: EdgeInsets.only(top: 20.0, bottom: 20.0, left: _isMobile(context) ? 0 : 8, right: _isMobile(context) ? 0 : 8),
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!_orderSuccessfullyPlaced && !_orderWasCancelledByUser && _orderIdForCancellation == null)
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: "Clear Selection",
+                      onPressed: _clearOrderDetails,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8.0),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      child: imageDisplayWidget,
+                    ),
+                  ),
+                ),
+                Text(
+                  _selectedFoodForOrder!.name,
+                  style: (_isMobile(context) ? textTheme.titleLarge : textTheme.headlineSmall)?.copyWith(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                if (_selectedFoodForOrder!.description != null && _selectedFoodForOrder!.description!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                    child: Text(
+                      _selectedFoodForOrder!.description!,
+                      style: textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                      maxLines: _isMobile(context) ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.remove_circle_outline, color: theme.colorScheme.primary, size: _isMobile(context) ? 28 : 32),
+                      onPressed: _isProcessingOrder || _orderIdForCancellation != null
+                          ? null
+                          : () {
+                        if (_quantity > 1) {
+                          setStateIfMounted(() => _quantity--);
+                        }
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                      child: Text('$_quantity', style: (_isMobile(context) ? textTheme.titleMedium : textTheme.titleLarge)?.copyWith(fontWeight: FontWeight.bold)),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.add_circle_outline, color: theme.colorScheme.primary, size: _isMobile(context) ? 28 : 32),
+                      onPressed: _isProcessingOrder || _orderIdForCancellation != null
+                          ? null
+                          : () => setStateIfMounted(() => _quantity++),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Center(
+                  child: Text(
+                    'Total: TSh ${totalPrice.toStringAsFixed(0)}/=',
+                    style: (_isMobile(context) ? textTheme.titleLarge : textTheme.headlineSmall)?.copyWith(
+                        color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (_orderProcessingErrorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: Text(
+                      _orderProcessingErrorMessage!,
+                      style: TextStyle(color: theme.colorScheme.error, fontSize: _isMobile(context) ? 13 : 14),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                if (showSendButton)
+                  ElevatedButton.icon(
+                    icon: _isProcessingOrder ? const SizedBox.shrink() : const Icon(Icons.send_rounded),
+                    label: _isProcessingOrder
+                        ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.onPrimary)))
+                        : const Text('Send Order'),
+                    style: theme.elevatedButtonTheme.style,
+                    onPressed: _isProcessingOrder ? null : _sendOrder,
+                  )
+                else if (showCancelButtonView)
+                  Column(
+                    children: [
+                      Text(
+                        'Order sent! You can cancel within:',
+                        style: TextStyle(color: theme.colorScheme.secondary, fontWeight: FontWeight.bold, fontSize: _isMobile(context) ? 13 : 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      Text(
+                        _formatDuration(_cancelTimeRemaining),
+                        style: (_isMobile(context) ? textTheme.headlineSmall : textTheme.headlineMedium)?.copyWith(color: theme.colorScheme.secondary),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        icon: _isProcessingOrder ? const SizedBox.shrink() : const Icon(Icons.cancel_outlined),
+                        label: _isProcessingOrder
+                            ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.onError)))
+                            : const Text('Cancel Order'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.colorScheme.error,
+                          foregroundColor: theme.colorScheme.onError,
+                        ).merge(theme.elevatedButtonTheme.style),
+                        onPressed: _isProcessingOrder ? null : _cancelOrder,
+                      ),
+                    ],
+                  )
+                else if (showOrderPlacedMessage)
+                    Column(
+                      children: [
+                        Icon(Icons.check_circle_outline, color: Colors.green[700], size: _isMobile(context) ? 36 : 48),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Order successfully placed!',
+                          style: (_isMobile(context) ? textTheme.titleSmall : textTheme.titleMedium)?.copyWith(color: Colors.green[700], fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 10),
+                        ElevatedButton(
+                          child: const Text('Make New Order'),
+                          style: theme.elevatedButtonTheme.style?.copyWith(
+                            padding: MaterialStateProperty.all(EdgeInsets.symmetric(vertical: _isMobile(context) ? 10 : 12, horizontal: 16)),
+                            textStyle: MaterialStateProperty.all(TextStyle(fontSize: _isMobile(context) ? 14 : 15)),
+                          ),
+                          onPressed: _clearOrderDetails,
+                        )
+                      ],
+                    )
+                  else if (showOrderCancelledMessage)
+                      Column(
+                        children: [
+                          Icon(Icons.cancel_outlined, color: theme.colorScheme.error, size: _isMobile(context) ? 36 : 48),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Order has been cancelled.',
+                            style: (_isMobile(context) ? textTheme.titleSmall : textTheme.titleMedium)?.copyWith(color: theme.colorScheme.error, fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          ElevatedButton(
+                            child: const Text('Make New Order'),
+                            style: theme.elevatedButtonTheme.style?.copyWith(
+                              padding: MaterialStateProperty.all(EdgeInsets.symmetric(vertical: _isMobile(context) ? 10 : 12, horizontal: 16)),
+                              textStyle: MaterialStateProperty.all(TextStyle(fontSize: _isMobile(context) ? 14 : 15)),
+                            ),
+                            onPressed: _clearOrderDetails,
+                          )
+                        ],
+                      ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
-
-  void _navigateToFoodDetails(FoodModel food) {
-    // food.company should be populated by FoodModel.fromMap if data structure is correct.
-    // food.companyName can also be a fallback.
-    if (food.company == null && (food.companyId == null || food.companyName == null || food.companyName!.isEmpty)) {
-      debugPrint("Navigating to FoodDetails for food ID ${food.id}. Company details might be missing or only partially available (ID: ${food.companyId}, Name: ${food.companyName}).");
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FoodDetailsScreen(food: food),
-      ),
-    );
-  }
-
-  void _navigateToOrderNowForBanner(BannerModel banner) {
-    // Placeholder - implement actual navigation or action
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const OrderNowScreen()), // Example
-    );
-  }
-
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final theme = Theme.of(context);
+    // Use _isMobile and _isTablet for responsive content, not for drawer visibility
+    double horizontalPadding = _isMobile(context) ? 16.0 : (_isTablet(context) ? 32.0 : 64.0);
+    double verticalPadding = _isMobile(context) ? 16.0 : 24.0;
 
-    return AppBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        drawer: const CustomDrawer(),
-        appBar: AppBar(
-          title: Text("GrubTap", style: TextStyle(color: theme.colorScheme.onPrimaryContainer)),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          iconTheme: IconThemeData(color: theme.colorScheme.onPrimaryContainer),
-          actionsIconTheme: IconThemeData(color: theme.colorScheme.onPrimaryContainer),
-          actions: [
-            IconButton(icon: const Icon(Icons.search), tooltip: "Search Restaurants", onPressed: _onSearchPressed),
-            IconButton(
-                icon: const Icon(Icons.notifications_outlined),
-                tooltip: "Notifications",
-                onPressed: _onNotificationsPressed),
-          ],
-        ),
-        body: _buildBodyContent(theme),
-      ),
-    );
-  }
+    // final bool isDesktopMode = _isDesktop(context); // This line is removed/commented for drawer logic
+    final String? roleForDrawer = _currentUserRole;
 
-  Widget _buildBodyContent(ThemeData theme) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator.adaptive());
-    }
+    debugPrint('[HomeScreen] Build Method -- START --');
+    debugPrint('[HomeScreen]   Role for Drawer (_currentUserRole): "$roleForDrawer"');
+    // debugPrint('[HomeScreen]   Is Desktop Mode: $isDesktopMode'); // No longer used for drawer logic
+    debugPrint('[HomeScreen]   Is Loading Foods: $_isLoadingFoods');
+    debugPrint('[HomeScreen]   All Foods Empty: ${_allFoods.isEmpty}');
+    debugPrint('[HomeScreen]   Food List Error Message: $_foodListErrorMessage');
 
-    if (_errorMessage != null) {
-      return RefreshIndicator(
-        onRefresh: refreshData,
-        child: LayoutBuilder( // Use LayoutBuilder to ensure ListView has bounded height for AlwaysScrollableScrollPhysics
-            builder: (context, constraints) {
-              return ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  Container(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight), // Make container fill screen
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.error_outline, color: theme.colorScheme.error, size: 50),
-                        const SizedBox(height: 16),
-                        Text(
-                          _errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.error),
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.colorScheme.errorContainer,
-                              foregroundColor: theme.colorScheme.onErrorContainer,
-                            ),
-                            icon: const Icon(Icons.refresh), onPressed: refreshData, label: const Text("Retry")),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }
-        ),
+    if (roleForDrawer == null || (_isLoadingFoods && _allFoods.isEmpty && _foodListErrorMessage == null)) {
+      debugPrint('[HomeScreen] Showing main loading Scaffold: Role is "$roleForDrawer", or initial food list is loading.');
+      return Scaffold(
+        key: const ValueKey("HomeScreenLoadingScaffold"),
+        appBar: AppBar(title: const Text('GrubTap Loading...')),
+        body: const Center(child: CircularProgressIndicator(key: ValueKey("HomeScreenLoadingIndicator"))),
       );
     }
 
-    if (_banners.isEmpty && _featuredCompanyEntries.isEmpty && _featuredFoods.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: refreshData,
-        child: LayoutBuilder( // Use LayoutBuilder for empty state as well
-            builder: (context, constraints) {
-              return ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  Container(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.store_mall_directory_outlined, size: 60, color: theme.textTheme.bodySmall?.color?.withOpacity(0.6)),
-                        const SizedBox(height: 16),
-                        Text(
-                          "No content available right now.\nPull down to refresh.",
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleMedium?.copyWith(color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }
-        ),
-      );
+    Widget? activeDrawer;
+    // Drawer is now always assigned if roleForDrawer is valid (non-null and non-empty),
+    // to ensure HomeScreen always has a drawer when role is determined.
+    if (roleForDrawer.isNotEmpty) {
+      activeDrawer = CustomDrawer(userRole: roleForDrawer);
+      debugPrint('[HomeScreen] Assigning CustomDrawer to Scaffold. Role: "$roleForDrawer"');
+    } else {
+      debugPrint('[HomeScreen] Drawer is NULL because roleForDrawer is unexpectedly empty. THIS IS AN ISSUE!');
     }
+    debugPrint('[HomeScreen] Build Method -- END --');
 
-    return RefreshIndicator(
-      onRefresh: refreshData,
-      child: ListView(
-        controller: _scrollController,
-        padding: const EdgeInsets.only(bottom: 70), // Padding for potential nav bar + general spacing
-        children: [
-          if (_banners.isNotEmpty) _buildBannersSection(theme),
-          if (_featuredFoods.isNotEmpty || _featuredCompanyEntries.isNotEmpty)
-            _buildPopularItemsAndRestaurantsSection(theme),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Center(
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  textStyle: theme.textTheme.labelLarge,
-                ),
-                onPressed: _goToAllCompanies,
-                icon: const Icon(Icons.restaurant_menu_outlined),
-                label: const Text("View All Restaurants"),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('GrubTap'),
+        iconTheme: theme.appBarTheme.iconTheme,
       ),
-    );
-  }
-
-  Widget _buildBannersSection(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            "Today's Specials",
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onBackground,
+      drawer: activeDrawer, // Assign the drawer based on the logic above
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadAllFoods,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(bottom: _isMobile(context) ? 16.0 : 24.0, top: 8.0),
+                  child: Text(
+                    'Select Your Meal',
+                    style: (_isMobile(context) ? theme.textTheme.headlineSmall : theme.textTheme.headlineMedium)
+                        ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                _buildFoodDropdown(context),
+                _buildOrderConfirmationSection(context),
+              ],
             ),
           ),
         ),
-        SizedBox(
-          height: 180,
-          child: PageView.builder(
-            controller: _bannerPageController,
-            itemCount: _banners.length,
-            onPageChanged: (int page) {
-              if(mounted) {
-                setState(() {
-                  _currentBannerPage = page;
-                });
-              }
-            },
-            itemBuilder: (context, index) {
-              final banner = _banners[index];
-              return GestureDetector(
-                onTap: () => _navigateToOrderNowForBanner(banner),
-                child: Card(
-                  clipBehavior: Clip.antiAlias,
-                  margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 3,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (banner.imageUrl != null &&
-                          banner.imageUrl!.isNotEmpty &&
-                          Uri.tryParse(banner.imageUrl!)?.hasAbsolutePath == true)
-                        Image.network(
-                          banner.imageUrl!,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (_, child, loadingProgress) =>
-                          loadingProgress == null ? child : const Center(child: CircularProgressIndicator.adaptive()),
-                          errorBuilder: (_, __, ___) => Container(
-                            color: theme.highlightColor.withOpacity(0.5),
-                            child: Center(child: Icon(Icons.broken_image_outlined, size: 40, color: theme.colorScheme.onSurfaceVariant)),
-                          ),
-                        )
-                      else
-                        Container(
-                          color: theme.highlightColor.withOpacity(0.5),
-                          child: Center(child: Icon(Icons.image_search_outlined, size: 40, color: theme.colorScheme.onSurfaceVariant)),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        if (_banners.length > 1)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(_banners.length, (index) {
-              return Container(
-                width: 8.0,
-                height: 8.0,
-                margin: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 2.0),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _currentBannerPage == index
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface.withOpacity(0.4),
-                ),
-              );
-            }),
-          ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-
-
-  Widget _buildPopularItemsAndRestaurantsSection(ThemeData theme) {
-    double screenWidth = MediaQuery.of(context).size.width;
-    double foodItemWidth = screenWidth > 600 ? screenWidth / 3.5 : screenWidth / 2.3; // Responsive width
-    double companyItemWidth = screenWidth > 600 ? screenWidth / 4.2 : screenWidth / 2.7; // Responsive width
-
-    return Column(
-      children: [
-        if (_featuredFoods.isNotEmpty)
-          _buildHorizontalListSection(
-            theme: theme,
-            title: "Popular Dishes",
-            itemCount: _featuredFoods.length,
-            itemBuilder: (ctx, i) {
-              final food = _featuredFoods[i];
-              // food.company should be populated by '*, companies(*)' in _loadAllData for _featuredFoods
-              final String effectiveCompanyName = food.company?.name ?? food.companyName ?? "Restaurant";
-              return SizedBox(
-                width: foodItemWidth,
-                child: Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  clipBehavior: Clip.antiAlias,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  elevation: 2,
-                  child: InkWell(
-                    onTap: () => _navigateToFoodDetails(food),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: (food.imageUrl != null &&
-                              food.imageUrl!.isNotEmpty &&
-                              Uri.tryParse(food.imageUrl!)?.hasAbsolutePath == true)
-                              ? Image.network(
-                            food.imageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                                color: theme.highlightColor.withOpacity(0.3),
-                                child: Center(child: Icon(Icons.fastfood_outlined, size: 30, color: theme.colorScheme.onSurfaceVariant))),
-                          )
-                              : Container(
-                              color: theme.highlightColor.withOpacity(0.3),
-                              child: Center(child: Icon(Icons.fastfood_outlined, size: 30, color: theme.colorScheme.onSurfaceVariant))),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                food.name,
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                effectiveCompanyName,
-                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "\$${food.price.toStringAsFixed(2)}",
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                    color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-            listHeight: 230,
-          ),
-
-        if (_featuredCompanyEntries.isNotEmpty)
-          _buildHorizontalListSection(
-            theme: theme,
-            title: "Featured Restaurants",
-            itemCount: _featuredCompanyEntries.length,
-            itemBuilder: (ctx, i) {
-              final featuredEntry = _featuredCompanyEntries[i];
-              final company = featuredEntry.company; // This is CompanyModel
-
-              return SizedBox(
-                width: companyItemWidth,
-                child: Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  clipBehavior: Clip.antiAlias,
-                  elevation: 2,
-                  child: InkWell(
-                    onTap: () => _navigateToCompanyMenu(company),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (featuredEntry.highlightText != null && featuredEntry.highlightText!.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                            decoration: BoxDecoration(
-                                color: theme.colorScheme.secondaryContainer.withOpacity(0.8),
-                                borderRadius: const BorderRadius.only(topLeft: Radius.circular(10), bottomRight: Radius.circular(8))
-                            ),
-                            child: Text(
-                              featuredEntry.highlightText!,
-                              style: TextStyle(color: theme.colorScheme.onSecondaryContainer, fontSize: 10, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        Expanded(
-                          flex: 2,
-                          child: Padding(
-                            padding: const EdgeInsets.all(10.0), // More padding for logo
-                            child: (company.logoUrl != null &&
-                                company.logoUrl!.isNotEmpty &&
-                                Uri.tryParse(company.logoUrl!)?.hasAbsolutePath == true)
-                                ? Image.network(
-                              company.logoUrl!,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => Center(child: Icon(Icons.business_outlined, size: 30, color: theme.colorScheme.onSurfaceVariant)),
-                            )
-                                : Container(
-                                color: theme.highlightColor.withOpacity(0.2), // Lighter background for placeholder
-                                child: Center(child: Icon(Icons.business_outlined, size: 30, color: theme.colorScheme.onSurfaceVariant))),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 4.0), // Adjust padding
-                          child: Text(
-                            company.name,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2, // Allow two lines for company name
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (featuredEntry.featuredFood != null)
-                          GestureDetector(
-                            onTap: () {
-                              if (featuredEntry.featuredFood != null) {
-                                // featuredEntry.featuredFood.company should be populated by FeaturedCompanyModel.fromMap
-                                _navigateToFoodDetails(featuredEntry.featuredFood!);
-                              }
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 8.0),
-                              child: Text(
-                                "Try: ${featuredEntry.featuredFood!.name}",
-                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.tertiary),
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                        if (featuredEntry.featuredFood == null) const SizedBox(height: 12), // Placeholder if no food
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-            listHeight: 210, // Adjust height as needed
-          ),
-      ],
-    );
-  }
-
-  Widget _buildHorizontalListSection({
-    required ThemeData theme,
-    required String title,
-    required int itemCount,
-    required Widget Function(BuildContext, int) itemBuilder,
-    required double listHeight,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10), // Adjusted padding
-          child: Text(
-            title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onBackground,
-            ),
-          ),
-        ),
-        SizedBox(
-          height: listHeight,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: itemCount,
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
-            itemBuilder: itemBuilder,
-          ),
-        ),
-        const SizedBox(height: 16),
-      ],
+      ),
     );
   }
 }
