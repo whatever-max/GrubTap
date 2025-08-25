@@ -7,7 +7,7 @@ import 'package:grubtap/screens/auth/signup_screen.dart';
 import 'package:grubtap/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
-  static const String routeName = '/login'; // Essential for routing
+  static const String routeName = '/login';
 
   final String? initialErrorMessage;
 
@@ -28,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
   String? _errorMessage;
+  bool _obscurePassword = true; // Added for password visibility toggle
 
   @override
   void initState() {
@@ -71,9 +72,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (response.user != null) {
         debugPrint('[LoginScreen] Supabase login success for: ${response.user!.email}');
-        // AuthWrapper will now handle navigation based on the new auth state and role.
+        // AuthWrapper will handle navigation
       } else {
-        // This case should be rare if AuthService throws exceptions for login failures.
         debugPrint('[LoginScreen] Login attempt returned no user and no exception.');
         if (mounted) {
           setState(() {
@@ -87,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           _errorMessage = e.toString().contains("Invalid login credentials")
               ? 'Invalid email or password. Please try again.'
-              : 'An error occurred during login. Please try again later.';
+              : 'An error occurred. Please try again.'; // Simplified generic error
         });
       }
     } finally {
@@ -102,79 +102,147 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Your UI from the previous prompt for LoginScreen is good.
-    // Re-pasting the structure for completeness.
+    // The Scaffold will inherit its white background from the theme set in main.dart
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // No AppBar for login screen, common practice. If you need one, add it here.
+      // appBar: AppBar(title: Text("Login")),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
-            child: Form(
-              key: _formKey,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Welcome Back!', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary), textAlign: TextAlign.center),
-                  const SizedBox(height: 8),
-                  Text('Login to continue your GrubTap experience.', style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant), textAlign: TextAlign.center),
-                  const SizedBox(height: 32),
-                  TextFormField(
-                    controller: _emailController,
-                    decoration: InputDecoration(labelText: 'Email Address', prefixIcon: Icon(Icons.email_outlined, color: theme.inputDecorationTheme.prefixIconColor), hintText: 'you@example.com'),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (val) {
-                      if (val == null || val.trim().isEmpty) return 'Please enter your email';
-                      if (!EmailValidator.validate(val.trim())) return 'Please enter a valid email';
-                      return null;
-                    },
-                    textInputAction: TextInputAction.next,
-                    enabled: !_isLoading,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    decoration: InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline, color: theme.inputDecorationTheme.prefixIconColor)),
-                    validator: (val) => val == null || val.isEmpty ? 'Please enter your password' : null,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _isLoading ? null : _login(),
-                    enabled: !_isLoading,
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _isLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
-                      child: const Text("Forgot Password?"),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  if (_errorMessage != null && _errorMessage!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: Text(_errorMessage!, style: TextStyle(color: theme.colorScheme.error, fontSize: 14), textAlign: TextAlign.center),
-                    ),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
-                    style: theme.elevatedButtonTheme.style,
-                    child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Login'),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
+            child: Card( // Wrap the form content in a Card
+              elevation: 4, // Add some shadow to lift it from the white background
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Form(
+                  key: _formKey,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text("Don't have an account?", style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-                      TextButton(
-                        onPressed: _isLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen())),
-                        child: Text("Sign Up Now", style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+                      Text(
+                        'Welcome Back!',
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary),
+                        textAlign: TextAlign.center,
                       ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Login to continue your GrubTap experience.',
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 32),
+                      TextFormField(
+                        controller: _emailController,
+                        decoration: InputDecoration(
+                          labelText: 'Email Address',
+                          // prefixIcon: Icon(Icons.email_outlined, color: theme.inputDecorationTheme.prefixIconColor), // prefixIconColor should be handled by theme
+                          prefixIcon: const Icon(Icons.email_outlined),
+                          hintText: 'you@example.com',
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Please enter your email';
+                          }
+                          if (!EmailValidator.validate(val.trim())) {
+                            return 'Please enter a valid email';
+                          }
+                          return null;
+                        },
+                        textInputAction: TextInputAction.next,
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          // prefixIcon: Icon(Icons.lock_outline, color: theme.inputDecorationTheme.prefixIconColor),
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              // color: theme.colorScheme.onSurfaceVariant, // Ensure good contrast
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
+                        ),
+                        validator: (val) =>
+                        val == null || val.isEmpty ? 'Please enter your password' : null,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _isLoading ? null : _login(),
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordScreen())),
+                          child: const Text("Forgot Password?"),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      if (_errorMessage != null && _errorMessage!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: Text(
+                            _errorMessage!,
+                            style: TextStyle(
+                                color: theme.colorScheme.error, fontSize: 14),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _login,
+                        style: theme.elevatedButtonTheme.style,
+                        child: _isLoading
+                            ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                            : const Text('Login'),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text("Don't have an account?",
+                              style: TextStyle(
+                                  color: theme.colorScheme.onSurfaceVariant)),
+                          TextButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () => Navigator.pushNamed(context, SignupScreen.routeName), // Use named route
+                            child: Text("Sign Up Now",
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary)),
+                          ),
+                        ],
+                      )
                     ],
-                  )
-                ],
+                  ),
+                ),
               ),
             ),
           ),

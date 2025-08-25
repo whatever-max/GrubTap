@@ -10,7 +10,7 @@ import 'package:grubtap/screens/admin/admin_dashboard_screen.dart';
 import 'package:grubtap/screens/admin/admin_invite_user_screen.dart';
 import 'package:grubtap/screens/history/order_history_screen.dart';
 import 'package:grubtap/screens/company/company_dashboard_screen.dart';
-import 'package:grubtap/screens/auth/login_screen.dart'; // <<<<<<< IMPORT LoginScreen
+import 'package:grubtap/screens/auth/login_screen.dart';
 
 class CustomDrawer extends StatelessWidget {
   final String userRole;
@@ -24,6 +24,7 @@ class CustomDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
     final theme = Theme.of(context);
+    final bool isDarkTheme = theme.brightness == Brightness.dark;
 
     final String username =
         user?.userMetadata?['username'] as String? ??
@@ -35,38 +36,40 @@ class CustomDrawer extends StatelessWidget {
         ? avatarUrlFromMeta
         : 'https://i.imgur.com/BoN9kdC.png'; // Default placeholder
 
-    final Color? titleColor = theme.textTheme.titleMedium?.color;
-    final Color? iconColor = theme.colorScheme.primary;
-    final Color? onPrimaryColor = theme.colorScheme.onPrimary;
-    final Color? errorColor = theme.colorScheme.error;
+    // Define colors for drawer elements ensuring readability on a white background
+    // If the app theme is dark, text/icons on the white drawer should still be dark.
+    final Color drawerTextColor = isDarkTheme ? Colors.black87 : (theme.textTheme.bodyLarge?.color ?? Colors.black87);
+    final Color drawerIconColor = isDarkTheme ? theme.colorScheme.primary : theme.colorScheme.primary; // Keep primary for icons or choose a dark one
+    final Color drawerHeaderTextColor = theme.colorScheme.onPrimary; // Text on primary color background
+    final Color drawerErrorColor = theme.colorScheme.error;
+
 
     List<Widget> drawerItems = [];
 
     drawerItems.add(
       UserAccountsDrawerHeader(
         decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
+          color: theme.colorScheme.primary, // Keep primary color for header background
         ),
         accountName: Text(
           username,
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: onPrimaryColor,
+            color: drawerHeaderTextColor,
           ),
         ),
         accountEmail: Text(
           email,
-          style: TextStyle(color: onPrimaryColor?.withOpacity(0.8)),
+          style: TextStyle(color: drawerHeaderTextColor.withOpacity(0.8)),
         ),
         currentAccountPicture: CircleAvatar(
-          backgroundColor: onPrimaryColor?.withOpacity(0.5),
+          backgroundColor: drawerHeaderTextColor.withOpacity(0.5),
           backgroundImage: NetworkImage(avatarUrl),
           onBackgroundImageError: (exception, stackTrace) {
             debugPrint("[CustomDrawer] Error loading avatar from NetworkImage: $avatarUrl\n$exception");
-            // Optionally, try to load a local asset placeholder on network error
           },
           child: (avatarUrlFromMeta == null || avatarUrlFromMeta.isEmpty)
-              ? Icon(Icons.person, size: 40, color: theme.colorScheme.primary) // Fallback icon
+              ? Icon(Icons.person, size: 40, color: theme.colorScheme.primary)
               : null,
         ),
       ),
@@ -75,10 +78,10 @@ class CustomDrawer extends StatelessWidget {
     // --- Common "Home (User View)"/"Home" link ---
     drawerItems.add(
       ListTile(
-        leading: Icon(Icons.home_outlined, color: iconColor),
+        leading: Icon(Icons.home_outlined, color: drawerIconColor),
         title: Text(
           (userRole == 'admin' || userRole == 'company') ? 'Home (User View)' : 'Home',
-          style: TextStyle(color: titleColor),
+          style: TextStyle(color: drawerTextColor),
         ),
         onTap: () {
           Navigator.pop(context); // Close drawer
@@ -93,8 +96,8 @@ class CustomDrawer extends StatelessWidget {
     if (userRole == 'admin') {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.dashboard_customize_outlined, color: iconColor),
-          title: Text('Admin Dashboard', style: TextStyle(color: titleColor)),
+          leading: Icon(Icons.dashboard_customize_outlined, color: drawerIconColor),
+          title: Text('Admin Dashboard', style: TextStyle(color: drawerTextColor)),
           onTap: () {
             Navigator.pop(context);
             if (ModalRoute.of(context)?.settings.name != AdminDashboardScreen.routeName) {
@@ -105,8 +108,8 @@ class CustomDrawer extends StatelessWidget {
       );
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.person_add_alt_1_outlined, color: iconColor),
-          title: Text('Invite User', style: TextStyle(color: titleColor)),
+          leading: Icon(Icons.person_add_alt_1_outlined, color: drawerIconColor),
+          title: Text('Invite User', style: TextStyle(color: drawerTextColor)),
           onTap: () {
             Navigator.pop(context);
             if (ModalRoute.of(context)?.settings.name != AdminInviteUserScreen.routeName) {
@@ -117,8 +120,8 @@ class CustomDrawer extends StatelessWidget {
       );
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.history_outlined, color: iconColor),
-          title: Text('Order History (Admin View)', style: TextStyle(color: titleColor)),
+          leading: Icon(Icons.history_outlined, color: drawerIconColor),
+          title: Text('Order History (Admin View)', style: TextStyle(color: drawerTextColor)),
           onTap: () {
             Navigator.pop(context);
             if (ModalRoute.of(context)?.settings.name != OrderHistoryScreen.routeName) {
@@ -133,8 +136,8 @@ class CustomDrawer extends StatelessWidget {
     if (userRole == 'user') {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.history_outlined, color: iconColor),
-          title: Text('My Order History', style: TextStyle(color: titleColor)),
+          leading: Icon(Icons.history_outlined, color: drawerIconColor),
+          title: Text('My Order History', style: TextStyle(color: drawerTextColor)),
           onTap: () {
             Navigator.pop(context);
             if (ModalRoute.of(context)?.settings.name != OrderHistoryScreen.routeName) {
@@ -149,8 +152,8 @@ class CustomDrawer extends StatelessWidget {
     if (userRole == 'company') {
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.storefront_outlined, color: iconColor),
-          title: Text('Company Dashboard', style: TextStyle(color: titleColor)),
+          leading: Icon(Icons.storefront_outlined, color: drawerIconColor),
+          title: Text('Company Dashboard', style: TextStyle(color: drawerTextColor)),
           onTap: () {
             Navigator.pop(context);
             if (ModalRoute.of(context)?.settings.name != CompanyDashboardScreen.routeName) {
@@ -161,8 +164,8 @@ class CustomDrawer extends StatelessWidget {
       );
       drawerItems.add(
         ListTile(
-          leading: Icon(Icons.history_outlined, color: iconColor),
-          title: Text('My Order History', style: TextStyle(color: titleColor)),
+          leading: Icon(Icons.history_outlined, color: drawerIconColor),
+          title: Text('My Order History', style: TextStyle(color: drawerTextColor)),
           onTap: () {
             Navigator.pop(context);
             if (ModalRoute.of(context)?.settings.name != OrderHistoryScreen.routeName) {
@@ -177,43 +180,31 @@ class CustomDrawer extends StatelessWidget {
     drawerItems.add(const Divider(thickness: 1.0));
     drawerItems.add(
       ListTile(
-        leading: Icon(Icons.logout_outlined, color: errorColor),
-        title: Text('Log Out', style: TextStyle(color: errorColor)),
+        leading: Icon(Icons.logout_outlined, color: drawerErrorColor),
+        title: Text('Log Out', style: TextStyle(color: drawerErrorColor)),
         onTap: () async {
-          // It's good practice to ensure context is still valid if operations are async
-          // and might take time, though for logout it's usually quick.
           final currentContext = context;
-
           Navigator.pop(currentContext); // Close drawer first
 
           try {
             debugPrint("[CustomDrawer] Logout initiated by user.");
             await SessionService.logout();
-            // SessionService.logout() will trigger AuthWrapper via auth state changes.
-            // AuthWrapper will then navigate to LoginScreen.
-            // However, for an immediate and clean stack, we can also push LoginScreen here.
-
-            // Check if context is still mounted before navigating
-            // This is important because SessionService.logout() might have already triggered
-            // AuthWrapper to rebuild and potentially dispose the current screen.
             if (currentContext.mounted) {
               debugPrint("[CustomDrawer] Navigating to LoginScreen after logout and clearing stack.");
-              // This ensures LoginScreen is the new root and clears previous routes.
               Navigator.of(currentContext).pushNamedAndRemoveUntil(
                 LoginScreen.routeName,
-                    (Route<dynamic> route) => false, // Remove all previous routes
+                    (Route<dynamic> route) => false,
               );
             } else {
               debugPrint("[CustomDrawer] Context was unmounted after SessionService.logout(), AuthWrapper should handle navigation.");
             }
-
           } catch (e) {
             debugPrint("[CustomDrawer] Error during logout process: $e");
             if (currentContext.mounted) {
               ScaffoldMessenger.of(currentContext).showSnackBar(
                 SnackBar(
                   content: Text('Error signing out: ${e.toString()}', style: TextStyle(color: theme.colorScheme.onError)),
-                  backgroundColor: errorColor,
+                  backgroundColor: drawerErrorColor,
                 ),
               );
             }
@@ -223,9 +214,7 @@ class CustomDrawer extends StatelessWidget {
     );
 
     return Drawer(
-      backgroundColor: theme.brightness == Brightness.light
-          ? Colors.grey.shade100 // A slightly off-white for light mode drawer
-          : theme.canvasColor.withOpacity(0.97), // Consistent with your dark mode theming
+      backgroundColor: Colors.white, // <<< CORE CHANGE: Set drawer background to white
       child: ListView(
         padding: EdgeInsets.zero,
         children: drawerItems,

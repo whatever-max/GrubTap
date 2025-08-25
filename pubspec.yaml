@@ -1,3 +1,4 @@
+# lib/pubspec.yaml
 name: grubtap
 description: A new Flutter project for role-based user management with Supabase.
 
@@ -33,46 +34,45 @@ dependencies:
     sdk: flutter
 
   # Core UI and utility packages
-  cupertino_icons: ^1.0.8 # For iOS style icons
+  cupertino_icons: ^1.0.8 # Usually stable, verify if a newer version is needed
 
   # Supabase for backend, auth, and database
-  supabase_flutter: ^2.9.1 # Please verify LATEST on pub.dev
+  supabase_flutter: ^2.9.1 # Let's stick with this one as ^2.10.0 had issues. Check `flutter pub outdated` later.
 
   # State management
-  provider: ^6.1.2
+  provider: ^6.1.2 # Check pub.dev for latest, e.g., ^6.1.x
 
   # Image handling
-  image_picker: ^1.0.7
-  cached_network_image: ^3.3.1
+  image_picker: ^1.1.2 # Check pub.dev for latest, e.g., ^1.1.x
+  cached_network_image: ^3.3.1 # Usually stable
 
   # Filesystem and local storage
-  path_provider: ^2.1.2 # Please verify LATEST on pub.dev
-  shared_preferences: ^2.2.2 # For simple key-value storage
+  path_provider: ^2.1.3 # Check pub.dev for latest, e.g., ^2.1.x
+  shared_preferences: ^2.2.3 # Check pub.dev for latest, e.g., ^2.2.x
 
   # Unique ID generation
-  uuid: ^4.3.3 # Please verify LATEST on pub.dev
+  uuid: ^4.4.0 # Check pub.dev for latest, e.g., ^4.4.x
 
   # Formatting and internationalization
-  intl: ^0.20.2 # For date/number formatting
+  intl: ^0.19.0 # Check pub.dev for latest, e.g., ^0.19.x or ^0.20.x
 
   # UI Enhancements & Utilities
-  flutter_screenutil: ^5.9.0 # For responsive layouts
-  flutter_spinkit: ^5.2.1 # Please verify LATEST on pub.dev (loading spinners)
-  email_validator: ^3.0.0 # For email validation
+  flutter_screenutil: ^5.9.3 # Check pub.dev for latest
+  flutter_spinkit: ^5.2.1 # Usually stable
+  email_validator: ^2.1.17 # Standard pub.dev version, use this unless ^3.0.0 is a specific fork
 
   # Authentication
-  sign_in_with_apple: ^7.0.1 # For Sign in with Apple functionality
+  sign_in_with_apple: ^6.1.1 # Check pub.dev for latest, e.g., ^6.1.x or higher if compatible
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
-  flutter_lints: ^6.0.0 # Or ^4.0.0 if you prefer, check current Flutter recommendations
+  flutter_lints: ^4.0.0 # Or ^3.0.0, check current Flutter recommendations. ^4.x.x is newer.
+
+  # Upgrading flutter_launcher_icons to a more recent version
+  # This often helps with platform configuration issues.
+  flutter_launcher_icons: ^0.14.0 # Or check pub.dev for the absolute latest like ^0.14.x
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -87,9 +87,11 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    # Make sure this exact file exists at project_root/assets/images/background.png
-    - assets/images/my_background.jpg
-    - assets/images/default_avatar.png
+    # Make sure this exact file exists at project_root/assets/images/app_icon.png
+    # (This is used by flutter_launcher_icons if image_path points here)
+    - assets/images/app_icon.png
+    # - assets/images/my_background.jpg # Keep if you have this specific file
+    # - assets/images/default_avatar.png # Keep if you have this specific file
     # To include all assets in a folder, list the folder name ending with a /
     - assets/images/   # Ensure this folder exists: project_root/assets/images/
     - assets/icons/    # Ensure this folder exists: project_root/assets/icons/
@@ -122,3 +124,43 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# flutter_launcher_icons configuration (no longer flutter_icons)
+# Ensure this is at the ROOT level of your pubspec.yaml (no indentation before it)
+flutter_launcher_icons:
+  # === Android ===
+  android: true # Can be true, false, or a String for the icon name (e.g., "launcher_icon")
+  # adaptive_icon_background: "#FFFFFF" # Optional: Path to image or hex color for Android adaptive icon background
+  # adaptive_icon_foreground: "assets/images/app_icon_foreground.png" # Optional: Path to image for Android adaptive icon foreground
+
+  # === iOS ===
+  ios: true # Can be true or false
+
+  # === Web ===
+  # For newer versions (like ^0.14.0), web configuration is often simpler.
+  # It might accept 'true', or a map for more control.
+  # Let's try with a simple structure first. If it errors, consult the package docs for this version.
+  web:
+    generate: true
+    # image_path: "assets/images/web_icon.png" # Optional: If different from global
+    # background_color: "#ffffff" # Optional
+    # theme_color: "#000000" # Optional
+
+  # === Windows ===
+  windows:
+    generate: true
+    # icon_size: 48 # Optional: Desired icon size for Windows (e.g., 48, 256)
+
+  # === macOS ===
+  macos:
+    generate: true
+
+  # === Linux ===
+  # Linux often doesn't need specific generation from this tool,
+  # as it uses standard .desktop files and icon themeing.
+  # You can omit 'linux' or set generate to false if you manage Linux icons manually.
+  # linux:
+  #   generate: false
+
+  # Global image_path (REQUIRED if not specified per platform)
+  image_path: "assets/images/app_icon.png" # MAKE SURE THIS FILE EXISTS!

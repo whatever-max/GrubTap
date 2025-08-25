@@ -4,6 +4,7 @@
     <!-- Important: WRITE_EXTERNAL_STORAGE implies READ_EXTERNAL_STORAGE on older APIs -->
     <!-- For Android 10 (API 29) and above, consider Scoped Storage alternatives -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <!-- For targetSdkVersion 29+, this permission is largely ineffective
