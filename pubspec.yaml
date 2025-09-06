@@ -38,6 +38,7 @@ dependencies:
 
   # Supabase for backend, auth, and database
   supabase_flutter: ^2.9.1 # Let's stick with this one as ^2.10.0 had issues. Check `flutter pub outdated` later.
+  app_links: ^3.5.0
 
   # State management
   provider: ^6.1.2 # Check pub.dev for latest, e.g., ^6.1.x
@@ -130,8 +131,8 @@ flutter:
 flutter_launcher_icons:
   # === Android ===
   android: true # Can be true, false, or a String for the icon name (e.g., "launcher_icon")
-  # adaptive_icon_background: "#FFFFFF" # Optional: Path to image or hex color for Android adaptive icon background
-  # adaptive_icon_foreground: "assets/images/app_icon_foreground.png" # Optional: Path to image for Android adaptive icon foreground
+  adaptive_icon_background: "#5A46C7" # Optional: Path to image or hex color for Android adaptive icon background
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png" # Optional: Path to image for Android adaptive icon foreground
 
   # === iOS ===
   ios: true # Can be true or false

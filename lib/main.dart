@@ -5,27 +5,17 @@ import 'package:provider/provider.dart' as app_provider;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
-import 'constants.dart';
+import 'constants.dart'; // Make sure this file exists and supabaseUrl/supabaseAnonKey are defined
 
 // --- Screen Imports for Routes ---
-// Auth
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
-// import 'screens/auth/role_selector_screen.dart'; // No longer needed here if not a named route
-
-// User Role Specific Dashboards/Home
 import 'screens/home/home_screen.dart';
 import 'screens/company/company_dashboard_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
-
-// Company Specific Screens
 import 'screens/company/manage_foods_screen.dart';
 import 'screens/company/company_orders_screen.dart';
-
-// General Screens
 import 'screens/history/order_history_screen.dart';
-
-// Admin Specific Management Screens
 import 'screens/admin/admin_invite_user_screen.dart';
 import 'screens/admin/management/admin_manage_users_screen.dart';
 import 'screens/admin/management/admin_manage_companies_screen.dart';
@@ -35,16 +25,16 @@ import 'screens/admin/management/admin_manage_orders_screen.dart';
 import 'screens/admin/admin_analytics_screen.dart';
 
 // Providers
-import 'providers/theme_provider.dart';
-import 'services/session_service.dart';
+import 'providers/theme_provider.dart'; // Make sure this file exists
+import 'services/session_service.dart';  // Make sure this file exists
 
 enum AuthStatus { unknown, authenticatedNoRole, authenticatedWithRole, unauthenticated }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
+    url: supabaseUrl,    // From constants.dart
+    anonKey: supabaseAnonKey, // From constants.dart
     authOptions: const FlutterAuthClientOptions(autoRefreshToken: true),
   );
   debugPrint("Supabase initialized.");
@@ -65,79 +55,134 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = app_provider.Provider.of<ThemeProvider>(context);
+    // primarySeedColor is Colors.deepPurple, which is a MaterialColor, so .shadeXXX is valid.
+    const MaterialColor primarySeedColor = Colors.deepPurple;
 
+    // --- Light Theme ---
     final baseLightTheme = ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      scaffoldBackgroundColor: Colors.white,
-      colorSchemeSeed: Colors.deepPurple,
+      colorSchemeSeed: primarySeedColor,
+      scaffoldBackgroundColor: Colors.grey[50],
       appBarTheme: AppBarTheme(
-          backgroundColor: Colors.white,
-          elevation: 0.5,
-          foregroundColor: Colors.black87,
-          iconTheme: const IconThemeData(color: Colors.black87),
-          titleTextStyle: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w500)
+        backgroundColor: Colors.white,
+        elevation: 0.8,
+        foregroundColor: Colors.black87,
+        iconTheme: const IconThemeData(color: Colors.black87),
+        titleTextStyle: const TextStyle(
+            color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w500),
       ),
       cardTheme: CardThemeData(
-        color: Colors.white.withOpacity(0.95),
-        elevation: 1,
+        color: Colors.white,
+        elevation: 1.5,
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      dialogBackgroundColor: Colors.white.withOpacity(0.97),
-      inputDecorationTheme: const InputDecorationTheme(
+      dialogBackgroundColor: Colors.white,
+      inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(12.0)),
+          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+          borderSide: BorderSide(color: primarySeedColor, width: 1.5),
         ),
         filled: true,
-        fillColor: Color(0xFFF0F0F0),
+        fillColor: Colors.white,
+        hintStyle: TextStyle(color: Colors.grey.shade500),
+        prefixIconColor: Colors.grey.shade600,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          backgroundColor: primarySeedColor,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
+      textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: primarySeedColor,
+          )
+      ),
+      iconTheme: IconThemeData(color: Colors.grey.shade700),
+      textTheme: Typography.material2021(platform: defaultTargetPlatform).black.copyWith(
+        bodyLarge: TextStyle(color: Colors.grey.shade800),
+        bodyMedium: TextStyle(color: Colors.grey.shade700),
+        titleMedium: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+        headlineSmall: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+      ),
+      dividerColor: Colors.grey.shade300,
     );
 
+    // --- Dark Theme ---
     final baseDarkTheme = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: Colors.white, // Uniform white background
-      colorSchemeSeed: Colors.deepPurple,
+      colorSchemeSeed: primarySeedColor,
+      scaffoldBackgroundColor: const Color(0xFF121212),
       appBarTheme: AppBarTheme(
-          backgroundColor: Colors.white,
-          elevation: 0.5,
-          foregroundColor: Colors.black87,
-          iconTheme: const IconThemeData(color: Colors.black87),
-          titleTextStyle: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w500)
+        backgroundColor: const Color(0xFF1F1F1F),
+        elevation: 0.5,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white70),
+        titleTextStyle: const TextStyle(
+            color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500),
       ),
       cardTheme: CardThemeData(
-        color: Colors.grey[100]!,
-        elevation: 1,
+        color: const Color(0xFF1E1E1E),
+        elevation: 1.5,
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      dialogBackgroundColor: Colors.white.withOpacity(0.97),
-      inputDecorationTheme: const InputDecorationTheme(
+      dialogBackgroundColor: const Color(0xFF1E1E1E),
+      inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(12.0)),
+          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+          borderSide: BorderSide(color: Colors.grey.shade700),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+          borderSide: BorderSide(color: Colors.grey.shade700),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+          // Ensure primarySeedColor is a MaterialColor to use .shadeXXX
+          borderSide: BorderSide(color: primarySeedColor.shade300, width: 1.5),
         ),
         filled: true,
-        fillColor: Color(0xFFF0F0F0),
+        fillColor: const Color(0xFF2C2C2C),
+        hintStyle: TextStyle(color: Colors.grey.shade500),
+        prefixIconColor: Colors.grey.shade400,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          backgroundColor: primarySeedColor.shade300,
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
-      textTheme: Typography.material2021(platform: defaultTargetPlatform).black,
-      iconTheme: const IconThemeData(color: Colors.black54),
+      textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: primarySeedColor.shade300,
+          )
+      ),
+      iconTheme: const IconThemeData(color: Colors.white70),
+      textTheme: Typography.material2021(platform: defaultTargetPlatform).white.copyWith(
+        bodyLarge: TextStyle(color: Colors.grey.shade300),
+        bodyMedium: TextStyle(color: Colors.grey.shade400),
+        titleMedium: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        headlineSmall: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
+      dividerColor: Colors.grey.shade800,
     );
 
     return MaterialApp(
@@ -148,17 +193,11 @@ class MyApp extends StatelessWidget {
       darkTheme: baseDarkTheme,
       home: const AuthWrapper(),
       routes: {
-        // Auth Routes
         LoginScreen.routeName: (context) => const LoginScreen(),
         SignupScreen.routeName: (context) => const SignupScreen(),
-        // RoleSelectorScreen.routeName is NOT defined here as it's not a direct named route
-
-        // Role-Specific Home/Dashboard Routes
         HomeScreen.routeName: (context) => const HomeScreen(),
         AdminDashboardScreen.routeName: (context) => const AdminDashboardScreen(),
         CompanyDashboardScreen.routeName: (context) => const CompanyDashboardScreen(),
-
-        // Admin Specific Management Routes
         AdminInviteUserScreen.routeName: (context) => const AdminInviteUserScreen(),
         AdminManageUsersScreen.routeName: (context) => const AdminManageUsersScreen(),
         AdminManageCompaniesScreen.routeName: (context) => const AdminManageCompaniesScreen(),
@@ -166,12 +205,8 @@ class MyApp extends StatelessWidget {
         AdminManageFoodsScreen.routeName: (context) => const AdminManageFoodsScreen(),
         AdminManageOrdersScreen.routeName: (context) => const AdminManageOrdersScreen(),
         AdminAnalyticsScreen.routeName: (context) => const AdminAnalyticsScreen(),
-
-        // Company Specific Routes
         ManageFoodsScreen.routeName: (context) => const ManageFoodsScreen(),
         CompanyOrdersScreen.routeName: (context) => const CompanyOrdersScreen(),
-
-        // General User Routes
         OrderHistoryScreen.routeName: (context) => const OrderHistoryScreen(),
       },
     );
@@ -179,7 +214,6 @@ class MyApp extends StatelessWidget {
 }
 
 // --- AuthWrapper (Handles session and role-based navigation) ---
-// This class definition remains the same.
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -194,14 +228,11 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    // debugPrint("[AuthWrapper] initState called."); // Keep if useful
     SessionService.initializeSessionListener(
       onSessionRestored: (User? user) {
-        // debugPrint("[AuthWrapper] onSessionRestored (User: ${user?.id}). Evaluating session and role.");
         _evaluateSessionAndRole();
       },
       onSessionExpiredOrSignedOut: () {
-        // debugPrint("[AuthWrapper] onSessionExpiredOrSignedOut. Setting state to unauthenticated.");
         if (mounted) {
           setState(() {
             _authStatus = AuthStatus.unauthenticated;
@@ -225,7 +256,15 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Future<void> _evaluateSessionAndRole() async {
     if (!mounted) return;
+    // Optimization: If already unauthenticated and trying to evaluate again with no current user, skip.
+    if (_authStatus == AuthStatus.unauthenticated && SessionService.getCurrentUser() == null) return;
+
+
+    // If auth status is unknown OR if there's a current user (even if previously auth'd with role)
+    // we should re-evaluate because role might have changed or session restored.
     if (_authStatus != AuthStatus.unknown && SessionService.getCurrentUser() == null) {
+      // This case handles explicit sign out where current user becomes null
+      // but status wasn't yet unknown.
       if (_authStatus != AuthStatus.unauthenticated) {
         setStateIfMounted(() {
           _authStatus = AuthStatus.unauthenticated;
@@ -235,29 +274,25 @@ class _AuthWrapperState extends State<AuthWrapper> {
       return;
     }
 
-    setStateIfMounted(() => _authStatus = AuthStatus.unknown);
+
+    setStateIfMounted(() => _authStatus = AuthStatus.unknown); // Show loading
     final currentUser = SessionService.getCurrentUser();
-    // debugPrint("[AuthWrapper] _evaluateSessionAndRole: Current Auth User from SessionService: ${currentUser?.id}");
 
     if (currentUser != null) {
-      final role = await SessionService.getUserRole();
+      final role = await SessionService.getUserRole(); // This now correctly gets from user_metadata
       if (!mounted) return;
-      // debugPrint("[AuthWrapper] Role fetched via SessionService.getUserRole(): '$role' for user ${currentUser.id}");
       setStateIfMounted(() {
         _currentRole = role;
         if (_currentRole == null || _currentRole!.isEmpty) {
           _authStatus = AuthStatus.authenticatedNoRole;
-          // debugPrint("[AuthWrapper] User ${currentUser.id} is Authenticated, but NO VALID ROLE in profiles. Status: authenticatedNoRole.");
         } else {
           _authStatus = AuthStatus.authenticatedWithRole;
-          // debugPrint("[AuthWrapper] User ${currentUser.id} is Authenticated WITH ROLE '$_currentRole'. Status: authenticatedWithRole.");
         }
       });
     } else {
       setStateIfMounted(() {
         _authStatus = AuthStatus.unauthenticated;
         _currentRole = null;
-        // debugPrint("[AuthWrapper] User is Unauthenticated. Status: unauthenticated.");
       });
     }
   }
@@ -270,13 +305,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   void dispose() {
-    // debugPrint("[AuthWrapper] dispose called.");
+    // It's good practice to cancel any active listeners or timers here.
+    // SessionService.disposeListener(); // If SessionService had such a method
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // debugPrint("[AuthWrapper] build: AuthStatus: $_authStatus, CurrentRole: '$_currentRole'");
     Widget screenToShow;
     switch (_authStatus) {
       case AuthStatus.unknown:
@@ -286,27 +321,35 @@ class _AuthWrapperState extends State<AuthWrapper> {
         screenToShow = const LoginScreen();
         break;
       case AuthStatus.authenticatedNoRole:
-      // debugPrint("[AuthWrapper] In authenticatedNoRole state. Showing error/guidance.");
         screenToShow = Scaffold(
           appBar: AppBar(title: const Text("Account Issue")),
-          body: Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 50),
-            const SizedBox(height: 16),
-            const Text(
-              "Your account is missing essential role information or is not yet fully verified. Please check your email for a verification link if you just signed up, or contact support.",
-              textAlign: TextAlign.center, style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(onPressed: () async { await SessionService.logout(); _evaluateSessionAndRole(); }, child: const Text("Logout and Try Again")),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: () {
-                // debugPrint("Contact support pressed from AuthNoRole state.");
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please contact support for assistance with your account role.")));
-              },
-              child: const Text("Contact Support"),
-            )
-          ]))),
+          body: Center(
+              child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 50),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "Your account is missing essential role information or is not yet fully verified. Please check your email for a verification link if you just signed up, or contact support.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                        onPressed: () async {
+                          await SessionService.logout();
+                          // _evaluateSessionAndRole(); // Called by listener
+                        },
+                        child: const Text("Logout and Try Again")),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text("Please contact support for assistance with your account role.")));
+                      },
+                      child: const Text("Contact Support"),
+                    )
+                  ]))),
         );
         break;
       case AuthStatus.authenticatedWithRole:
@@ -321,19 +364,27 @@ class _AuthWrapperState extends State<AuthWrapper> {
             screenToShow = const AdminDashboardScreen();
             break;
           default:
-          // debugPrint("[AuthWrapper] Authenticated but has an UNHANDLED role: '$_currentRole'. Showing error/guidance.");
             screenToShow = Scaffold(
               appBar: AppBar(title: const Text("Account Role Issue")),
-              body: Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 50),
-                const SizedBox(height: 16),
-                Text(
-                  "Your account has an unrecognized role ('$_currentRole'). Please contact support.",
-                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(onPressed: () async { await SessionService.logout(); _evaluateSessionAndRole(); }, child: const Text("Logout")),
-              ]))),
+              body: Center(
+                  child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 50),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Your account has an unrecognized role ('$_currentRole'). Please contact support.",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                            onPressed: () async {
+                              await SessionService.logout();
+                              // _evaluateSessionAndRole(); // Called by listener
+                            },
+                            child: const Text("Logout")),
+                      ]))),
             );
         }
         break;
@@ -341,3 +392,4 @@ class _AuthWrapperState extends State<AuthWrapper> {
     return screenToShow;
   }
 }
+
