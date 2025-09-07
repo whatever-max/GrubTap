@@ -260,6 +260,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildDailyOrderSummaryWidget(BuildContext context) {
     final theme = Theme.of(context);
+    final isLightMode = theme.brightness == Brightness.light; // Check for light mode
+
     Map<String, int> aggregatedItems = {};
     int totalQuantity = 0;
     String companyNameDisplay = "N/A Company";
@@ -422,7 +424,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 label: const Text("Refresh Summary"),
                 onPressed: _determinePeriodAndFetchData,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.secondaryContainer,
+                  // **** MODIFICATION HERE for better visibility ****
+                  backgroundColor: isLightMode
+                      ? theme.colorScheme.primary // Use primary color in light mode
+                      : theme.colorScheme.secondaryContainer, // Keep as is for dark mode
+                  foregroundColor: isLightMode
+                      ? theme.colorScheme.onPrimary // Text/icon color on primary
+                      : theme.colorScheme.onSecondaryContainer, // Text/icon color on secondary container
+                  // **** END MODIFICATION ****
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 ),
               ),

@@ -1,54 +1,115 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissions for reading and writing to external storage -->
-    <!-- Important: WRITE_EXTERNAL_STORAGE implies READ_EXTERNAL_STORAGE on older APIs -->
-    <!-- For Android 10 (API 29) and above, consider Scoped Storage alternatives -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <!-- Permissions -->
+    <!-- READ_EXTERNAL_STORAGE is implicitly granted if you have WRITE_EXTERNAL_STORAGE on older APIs -->
+    <!-- For newer APIs (Android 10+), scoped storage is preferred. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <!-- For targetSdkVersion 29+, this permission is largely ineffective
-         due to Scoped Storage. requestLegacyExternalStorage is the temporary
-         opt-out for Android 10. For Android 11+, it's ignored. -->
+    <!--
+        requestLegacyExternalStorage:
+        - Relevant for apps targeting Android 10 (API 29) to temporarily opt-out of Scoped Storage.
+        - Ignored on Android 11 (API 30) and higher.
+        - If you target Android 11+, you must adapt to Scoped Storage or use Manage External Storage permission
+          for specific use cases (requires Play Store review and is rarely granted).
+    -->
 
     <application
         android:label="grubtap"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
-        <!-- requestLegacyExternalStorage:
-             - Relevant for apps targeting Android 10 (API 29) to temporarily opt-out of Scoped Storage.
-             - Ignored on Android 11 (API 30) and higher.
-             - If you target Android 11+, you need to adapt to Scoped Storage principles
-               or use the All Files Access permission for specific use cases (requires Play Store review).
+        <!-- android:usesCleartextTraffic="true" should only be used for development if absolutely necessary
+             and if you are testing with non-HTTPS local endpoints.
+             For production, always use HTTPS. If you have specific local dev needs,
+             use a network_security_config.xml file instead for better security.
         -->
+        <!-- Example for development only: <application android:usesCleartextTraffic="true" ... > -->
+
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+
+            <!-- Standard Flutter meta-data -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme"
                 />
+
+            <!-- Main launcher intent filter -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!--
+                Deep Link Intent Filter for Password Reset
+                Scheme: myapp
+                Host: password-reset
+                This URI (e.g., myapp://password-reset) must be configured in:
+                1. Supabase Dashboard > Authentication > URL Configuration > Redirect URLs
+                2. The `redirectTo` parameter when calling `resetPasswordForEmail` in your Flutter app.
+            -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="myapp" android:host="password-reset" />
+            </intent-filter>
+
+            <!--
+                Optional: Deep Link Intent Filter for User Invites (if using a different host)
+                Example: myapp://invite-callback
+                If you use the same `myapp://password-reset` for invites (as suggested for simplicity
+                since both can lead to a password update screen), then this separate filter is not needed.
+                If you use a different host like "invite-callback" or "accept-invite":
+                1. Add it here.
+                2. Add `myapp://invite-callback` to Supabase Redirect URLs.
+                3. Use `redirectTo: 'myapp://invite-callback'` in your inviteUserByEmail Edge Function options.
+            -->
+            <!--
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="myapp" android:host="invite-callback" />
+            </intent-filter>
+            -->
+
         </activity>
+
+        <!-- Flutter embedding meta-data -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
 
+    <!-- Queries for package visibility - useful if your app needs to interact with specific apps -->
+    <!-- The PROCESS_TEXT query is often added by default by Flutter tools or some plugins. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!--
+           If you were using HTTPS App Links (Android App Links), you would also declare
+           the https scheme and your verified domain here for Android 11+ package visibility,
+           though the primary verification is done via the assetlinks.json file.
+           Example for HTTPS App Links:
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" android:host="your-verified-domain.com" />
+        </intent>
+        -->
     </queries>
+
 </manifest>

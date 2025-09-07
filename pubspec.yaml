@@ -37,9 +37,9 @@ dependencies:
   cupertino_icons: ^1.0.8 # Usually stable, verify if a newer version is needed
 
   # Supabase for backend, auth, and database
-  supabase_flutter: ^2.9.1 # Let's stick with this one as ^2.10.0 had issues. Check `flutter pub outdated` later.
+  supabase_flutter: ^2.10.0 # Let's stick with this one as ^2.10.0 had issues. Check `flutter pub outdated` later.
   app_links: ^3.5.0
-
+  #uni_links: ^0.5.1
   # State management
   provider: ^6.1.2 # Check pub.dev for latest, e.g., ^6.1.x
 

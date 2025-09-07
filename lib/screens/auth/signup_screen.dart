@@ -63,7 +63,7 @@ class _SignupScreenState extends State<SignupScreen> {
     final String password = _passwordController.text;
     final String firstName = _firstNameController.text.trim();
     final String lastName = _lastNameController.text.trim();
-    final String username = _usernameController.text.trim();
+    final String username = _usernameController.text.trim(); // Still trim for consistency
 
     debugPrint('[SignupScreen] Data collected locally. Navigating to RoleSelectorScreen.');
     setState(() => _isLoading = false);
@@ -98,11 +98,8 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    // No more outer Container for image background needed.
-    // Scaffold will inherit white background from the theme.
     return Scaffold(
       appBar: AppBar(
-        // AppBar will use theme's AppBarTheme (white background, dark foreground)
         title: const Text('Create Account'),
         leading: BackButton(
           onPressed: () {
@@ -115,8 +112,8 @@ class _SignupScreenState extends State<SignupScreen> {
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
-          child: Card( // Wrap the form content in a Card
-            elevation: 4, // Add some shadow
+          child: Card(
+            elevation: 4,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
               padding: const EdgeInsets.all(20.0),
@@ -145,7 +142,6 @@ class _SignupScreenState extends State<SignupScreen> {
                     const SizedBox(height: 32),
                     TextFormField(
                       controller: _firstNameController,
-                      // decoration: InputDecoration(labelText: 'First Name', prefixIcon: Icon(Icons.person_outline, color: theme.inputDecorationTheme.prefixIconColor ?? theme.colorScheme.onSurfaceVariant)),
                       decoration: const InputDecoration(labelText: 'First Name', prefixIcon: Icon(Icons.person_outline)),
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) return 'Enter first name';
@@ -158,7 +154,6 @@ class _SignupScreenState extends State<SignupScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _lastNameController,
-                      // decoration: InputDecoration(labelText: 'Last Name', prefixIcon: Icon(Icons.person_outline, color: theme.inputDecorationTheme.prefixIconColor ?? theme.colorScheme.onSurfaceVariant)),
                       decoration: const InputDecoration(labelText: 'Last Name', prefixIcon: Icon(Icons.person_outline)),
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) return 'Enter last name';
@@ -171,22 +166,21 @@ class _SignupScreenState extends State<SignupScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _usernameController,
-                      // decoration: InputDecoration(labelText: 'Username', prefixIcon: Icon(Icons.alternate_email, color: theme.inputDecorationTheme.prefixIconColor ?? theme.colorScheme.onSurfaceVariant)),
                       decoration: const InputDecoration(labelText: 'Username', prefixIcon: Icon(Icons.alternate_email)),
+                      // **** MODIFIED VALIDATOR FOR USERNAME ****
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) return 'Enter username';
-                        if (val.trim().length < 3) return 'At least 3 characters';
-                        if (val.contains(' ')) return 'No spaces allowed';
-                        if (!RegExp(r"^[a-zA-Z0-9_-]+$").hasMatch(val.trim())) return 'Letters, numbers, _, - only';
+                        if (val.trim().length < 3) return 'Username must be at least 3 characters';
+                        // No more validation for spaces or specific characters
                         return null;
                       },
+                      // **** END MODIFICATION ****
                       textInputAction: TextInputAction.next,
                       enabled: !_isLoading,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _emailController,
-                      // decoration: InputDecoration(labelText: 'Email Address', prefixIcon: Icon(Icons.email_outlined, color: theme.inputDecorationTheme.prefixIconColor ?? theme.colorScheme.onSurfaceVariant)),
                       decoration: const InputDecoration(labelText: 'Email Address', prefixIcon: Icon(Icons.email_outlined)),
                       keyboardType: TextInputType.emailAddress,
                       validator: (val) {
@@ -202,12 +196,9 @@ class _SignupScreenState extends State<SignupScreen> {
                       controller: _passwordController,
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        // prefixIcon: Icon(Icons.lock_outline, color: theme.inputDecorationTheme.prefixIconColor ?? theme.colorScheme.onSurfaceVariant),
                         prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                            // color: theme.colorScheme.onSurfaceVariant
-                          ),
+                          icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                           onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                         ),
                       ),
@@ -225,12 +216,9 @@ class _SignupScreenState extends State<SignupScreen> {
                       controller: _confirmPasswordController,
                       decoration: InputDecoration(
                         labelText: 'Confirm Password',
-                        // prefixIcon: Icon(Icons.check_circle_outline, color: theme.inputDecorationTheme.prefixIconColor ?? theme.colorScheme.onSurfaceVariant),
                         prefixIcon: const Icon(Icons.check_circle_outline),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                            // color: theme.colorScheme.onSurfaceVariant
-                          ),
+                          icon: Icon(_obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                           onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
                         ),
                       ),
