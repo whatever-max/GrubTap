@@ -7,7 +7,7 @@ class FoodModel {
   final String? description;
   final String? imageUrl;
   // profileId will map to company_id from your 'foods' table
-  final String? profileId;
+  final String? profileId; // This is used as company_id for the food
 
   FoodModel({
     required this.id,
@@ -22,23 +22,22 @@ class FoodModel {
     return FoodModel(
       id: map['id']?.toString() ?? '',
       name: map['name'] as String? ?? 'Unnamed Food',
-      // Supabase numeric type might need explicit casting if not handled by client
       price: (map['price'] as num?)?.toDouble() ?? 0.0,
       description: map['description'] as String?,
       imageUrl: map['image_url'] as String?,
-      // Use 'company_id' from your database schema for profileId
-      profileId: map['company_id'] as String?,
+      profileId: map['company_id'] as String?, // Mapped from company_id
     );
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson() { // Useful if you were to insert/update foods
     return {
       'id': id,
       'name': name,
       'price': price,
       'description': description,
       'image_url': imageUrl,
-      'company_id': profileId, // Map back to company_id if you were to insert/update foods
+      'company_id': profileId, // Maps back to company_id
     };
   }
 }
+

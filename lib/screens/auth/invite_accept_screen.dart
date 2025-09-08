@@ -4,11 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart'; // Ensure this import is correct
 
 class InviteAcceptScreen extends StatefulWidget {
-  // **** UPDATED ROUTE NAME ****
-  static const String routeName = '/invite'; // Changed from '/invite-accept'
-  final String? tokenFromLink;
+  static const String routeName = '/invite';
+  // We no longer expect a specific token via arguments if the fragment handles session
+  // final String? tokenFromLink;
 
-  const InviteAcceptScreen({super.key, this.tokenFromLink});
+  const InviteAcceptScreen({super.key /*, this.tokenFromLink */});
 
   @override
   State<InviteAcceptScreen> createState() => _InviteAcceptScreenState();
@@ -20,31 +20,40 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
-  String? _inviteToken;
+  bool _initialCheckDone = false;
+  final supabase = Supabase.instance.client;
 
   @override
   void initState() {
     super.initState();
-    _inviteToken = widget.tokenFromLink;
+    debugPrint("[InviteAcceptScreen] initState called.");
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-      if (args != null && args.containsKey('token') && args['token'] != null) {
+      debugPrint("[InviteAcceptScreen] initState postFrameCallback started.");
+
+      // For invites, the Supabase client should automatically handle the session
+      // from the URL fragment (#access_token=...&type=invite).
+      // We just need to check if a user is available after the client has had a chance.
+      if (supabase.auth.currentUser == null) {
+        debugPrint("[InviteAcceptScreen] initState: No active Supabase user session found (currentUser is null). Invite link might be invalid, expired, or session not yet processed from fragment.");
         if (mounted) {
           setState(() {
-            _inviteToken = args['token'];
+            _errorMessage = "Invalid or expired invitation. Please check the link or contact support.";
+            _initialCheckDone = true;
+          });
+          // Optionally, redirect to login after a delay if error persists
+          Future.delayed(const Duration(seconds: 4), () {
+            if (mounted && _errorMessage != null && supabase.auth.currentUser == null) {
+              Navigator.of(context).pushNamedAndRemoveUntil(LoginScreen.routeName, (route) => false);
+            }
           });
         }
-        debugPrint("[InviteAcceptScreen] Received token via arguments: $_inviteToken");
-      } else if (_inviteToken != null) {
-        debugPrint("[InviteAcceptScreen] Using token from constructor: $_inviteToken");
-      }
-      else {
-        debugPrint("[InviteAcceptScreen] No invite token found.");
+      } else {
+        debugPrint("[InviteAcceptScreen] initState: Active Supabase user session found: ${supabase.auth.currentUser!.id}. User is ready to set password.");
         if (mounted) {
           setState(() {
-            _errorMessage = "Invalid or missing invitation link. Please check the link and try again.";
+            _initialCheckDone = true;
           });
         }
       }
@@ -55,10 +64,11 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    if (Supabase.instance.client.auth.currentUser == null) {
+    // Critical check: Session must be active
+    if (supabase.auth.currentUser == null) {
       if(mounted) {
         setState(() {
-          _errorMessage = "No active session. Please ensure the invitation link is correct or try logging in again if you've already set a password.";
+          _errorMessage = "No active session. Please ensure the invitation link is correct or try again.";
         });
       }
       return;
@@ -70,28 +80,31 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
     });
 
     try {
-      final response = await Supabase.instance.client.auth.updateUser(
+      final response = await supabase.auth.updateUser(
         UserAttributes(password: _passwordController.text),
       );
 
       if (response.user != null) {
-        await Supabase.instance.client.auth.updateUser(
-          UserAttributes(
-            data: {
-              'requires_password_change': false,
-              'temp_password_active': false,
-            },
-          ),
-        );
-        debugPrint("[InviteAcceptScreen] Password updated and metadata flags cleared for user: ${response.user!.id}");
+        // Optionally update metadata if needed (e.g., clear invite-specific flags)
+        // await supabase.auth.updateUser(
+        //   UserAttributes(
+        //     data: {
+        //       'requires_password_change': false, // Example
+        //       'temp_password_active': false,   // Example
+        //       'invite_accepted_at': DateTime.now().toIso8601String(), // Example
+        //     },
+        //   ),
+        // );
+        debugPrint("[InviteAcceptScreen] Password updated successfully for user: ${response.user!.id}");
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Password set successfully! Please log in.'), backgroundColor: Colors.green),
+            const SnackBar(content: Text('Account activated! Password set successfully. Please log in.'), backgroundColor: Colors.green),
           );
           Navigator.of(context).pushNamedAndRemoveUntil(LoginScreen.routeName, (route) => false);
         }
       } else {
+        // This case should be rare if updateUser didn't throw AuthException but returned null user
         throw Exception("Failed to update user password. User object was null after update attempt.");
       }
     } on AuthException catch (e) {
@@ -121,19 +134,19 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
   void dispose() {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    debugPrint("[InviteAcceptScreen] dispose called.");
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (Supabase.instance.client.auth.currentUser == null && _errorMessage == null && !_isLoading) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if(mounted && _errorMessage == null) {
-          setState(() {
-            _errorMessage = "Invalid or expired invitation. Please request a new invite or contact support.";
-          });
-        }
-      });
+    debugPrint("[InviteAcceptScreen] build called. InitialCheckDone: $_initialCheckDone, Error: $_errorMessage, User: ${supabase.auth.currentUser?.id}");
+
+    if (!_initialCheckDone && _errorMessage == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Complete Your Account')),
+        body: const Center(child: CircularProgressIndicator(key: ValueKey("InviteInitialLoading"))),
+      );
     }
 
     return Scaffold(
@@ -141,7 +154,7 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20.0),
-          child: (_errorMessage != null && !_isLoading)
+          child: (_errorMessage != null) // Simplified condition: if there's an error, show error UI
               ? Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -161,7 +174,8 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
               )
             ],
           )
-              : Form(
+              : (supabase.auth.currentUser != null) // Show form only if session is active and no error
+              ? Form(
             key: _formKey,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -184,12 +198,8 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
                   decoration: const InputDecoration(labelText: 'New Password', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_outline)),
                   obscureText: true,
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter a password.';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters.';
-                    }
+                    if (value == null || value.isEmpty) return 'Please enter a password.';
+                    if (value.length < 6) return 'Password must be at least 6 characters.';
                     return null;
                   },
                 ),
@@ -199,12 +209,8 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
                   decoration: const InputDecoration(labelText: 'Confirm New Password', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock_person_outlined)),
                   obscureText: true,
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please confirm your password.';
-                    }
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match.';
-                    }
+                    if (value == null || value.isEmpty) return 'Please confirm your password.';
+                    if (value != _passwordController.text) return 'Passwords do not match.';
                     return null;
                   },
                 ),
@@ -213,21 +219,19 @@ class _InviteAcceptScreenState extends State<InviteAcceptScreen> {
                   const Center(child: CircularProgressIndicator())
                 else
                   ElevatedButton(
-                    onPressed: Supabase.instance.client.auth.currentUser != null ? _setNewPassword : null,
+                    onPressed: _setNewPassword, // Enabled if currentUser is not null
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Supabase.instance.client.auth.currentUser != null
-                          ? Theme.of(context).primaryColor
-                          : Colors.grey,
+                      // backgroundColor will use theme default if not disabled
                     ),
                     child: const Text('Set Password and Activate'),
                   ),
               ],
             ),
-          ),
+          )
+              : const Center(child: CircularProgressIndicator(key: ValueKey("InviteWaitingForSession"))), // Fallback if no error but no user yet
         ),
       ),
     );
   }
 }
-

@@ -1,10 +1,10 @@
 // lib/screens/auth/forgot_password_screen.dart
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // Import Supabase
-import 'package:email_validator/email_validator.dart'; // For email validation
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:email_validator/email_validator.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
-  static const String routeName = '/forgot-password'; // For named navigation
+  static const String routeName = '/forgot-password';
   const ForgotPasswordScreen({super.key});
 
   @override
@@ -15,7 +15,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _isLoading = false;
-  final supabase = Supabase.instance.client; // Get Supabase instance
+  final supabase = Supabase.instance.client;
 
   @override
   void dispose() {
@@ -25,52 +25,52 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Future<void> _sendPasswordResetEmail() async {
     if (!_formKey.currentState!.validate()) return;
+    final email = _emailController.text.trim();
 
     setState(() => _isLoading = true);
+    String? anError;
 
     try {
-      // *** IMPORTANT: Add your deep link scheme and host here ***
-      // This MUST match what's in your AndroidManifest.xml and Supabase redirect URLs
-      const String redirectTo = 'myapp://password-reset'; // Your chosen deep link
+      // Construct the redirectTo URL for your app, including the email.
+      // This MUST match an entry in your Supabase Dashboard "Redirect URLs"
+      // and the intent-filter in your AndroidManifest.xml for the host "password-reset".
+      final String redirectTo = 'myapp://password-reset?email=${Uri.encodeComponent(email)}';
+      debugPrint("[ForgotPasswordScreen] Attempting to send password reset. redirectTo: $redirectTo FOR EMAIL: $email");
 
       await supabase.auth.resetPasswordForEmail(
-        _emailController.text.trim(),
+        email,
         redirectTo: redirectTo,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Password reset link sent! Check your email.'),
+            content: Text('Password reset link sent! Check your email to open the link in the app.'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 5),
           ),
         );
-        // Optionally pop or navigate to login
         if (Navigator.canPop(context)) {
           Navigator.pop(context);
         }
       }
     } on AuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.message}'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      debugPrint("[ForgotPasswordScreen] AuthException: ${e.message}");
+      anError = 'Error: ${e.message}';
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('An unexpected error occurred: ${e.toString()}'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      debugPrint("[ForgotPasswordScreen] Generic Exception: ${e.toString()}");
+      anError = 'An unexpected error occurred: ${e.toString()}';
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
+        if (anError != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(anError),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
       }
     }
   }
@@ -101,7 +101,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Enter your email address below and we\'ll send you a link to reset your password.',
+                      'Enter your email address below. We\'ll send you a link to reset your password in the app.',
                       style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                       textAlign: TextAlign.center,
                     ),
@@ -111,7 +111,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Email Address',
                         prefixIcon: Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.emailAddress,
                       validator: (val) {
@@ -126,7 +125,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton(
                       onPressed: _sendPasswordResetEmail,
-                      style: theme.elevatedButtonTheme.style,
                       child: const Text('Send Reset Link'),
                     ),
                   ],

@@ -1,18 +1,19 @@
 // lib/main.dart
 import 'dart:async';
+import 'package:flutter/foundation.dart'; // For mapEquals
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For PlatformException
 import 'package:provider/provider.dart' as app_provider;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart';
 import 'package:app_links/app_links.dart';
 
-import 'constants.dart';
+import 'constants.dart'; // Assuming supabaseUrl and supabaseAnonKey are here
+
 // Screen Imports
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
-import 'screens/auth/reset_password_screen.dart'; // Ensure this uses the updated version
+import 'screens/auth/reset_password_screen.dart';
 import 'screens/auth/force_change_password_screen.dart';
 import 'screens/auth/invite_accept_screen.dart';
 import 'screens/home/home_screen.dart';
@@ -21,6 +22,7 @@ import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/company/manage_foods_screen.dart';
 import 'screens/company/company_orders_screen.dart';
 import 'screens/history/order_history_screen.dart';
+import 'screens/edit_order/edit_order_screen.dart'; // <<< ADD THIS IMPORT
 import 'screens/admin/admin_invite_user_screen.dart';
 import 'screens/admin/management/admin_manage_users_screen.dart';
 import 'screens/admin/management/admin_manage_companies_screen.dart';
@@ -31,10 +33,12 @@ import 'screens/admin/admin_analytics_screen.dart';
 
 // Service and Provider Imports
 import 'providers/theme_provider.dart';
-import 'services/session_service.dart';
+import 'services/session_service.dart'; // Assuming this handles role and session logic
 
+// Enum for Auth Status (as you had)
 enum AuthStatus { unknown, authenticatedNoRole, authenticatedWithRole, unauthenticated }
 
+// Global Navigator Key (as you had)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -42,7 +46,9 @@ void main() async {
   await Supabase.initialize(
     url: supabaseUrl,
     anonKey: supabaseAnonKey,
-    authOptions: const FlutterAuthClientOptions(autoRefreshToken: true),
+    authOptions: const FlutterAuthClientOptions(
+      autoRefreshToken: true,
+    ),
   );
   debugPrint("Supabase initialized successfully.");
 
@@ -50,6 +56,7 @@ void main() async {
     app_provider.MultiProvider(
       providers: [
         app_provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        // Add other global providers if needed
       ],
       child: const MyApp(),
     ),
@@ -62,12 +69,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = app_provider.Provider.of<ThemeProvider>(context);
-    const MaterialColor primarySeedColor = Colors.deepPurple;
+    const MaterialColor primarySeedColor = Colors.deepPurple; // Example, use your actual theme
 
+    // --- YOUR THEME DATA (condensed for brevity, use your actual theme definitions) ---
     final baseLightTheme = ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       colorSchemeSeed: primarySeedColor,
+      // ... your full light theme properties
       scaffoldBackgroundColor: Colors.grey[50],
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
@@ -116,20 +125,13 @@ class MyApp extends StatelessWidget {
             foregroundColor: primarySeedColor,
           )
       ),
-      iconTheme: IconThemeData(color: Colors.grey.shade700),
-      textTheme: Typography.material2021(platform: defaultTargetPlatform).black.copyWith(
-        bodyLarge: TextStyle(color: Colors.grey.shade800),
-        bodyMedium: TextStyle(color: Colors.grey.shade700),
-        titleMedium: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
-        headlineSmall: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
-      ),
-      dividerColor: Colors.grey.shade300,
     );
 
     final baseDarkTheme = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorSchemeSeed: primarySeedColor,
+      // ... your full dark theme properties
       scaffoldBackgroundColor: const Color(0xFF121212),
       appBarTheme: AppBarTheme(
         backgroundColor: const Color(0xFF1F1F1F),
@@ -178,15 +180,8 @@ class MyApp extends StatelessWidget {
             foregroundColor: primarySeedColor.shade300,
           )
       ),
-      iconTheme: const IconThemeData(color: Colors.white70),
-      textTheme: Typography.material2021(platform: defaultTargetPlatform).white.copyWith(
-        bodyLarge: TextStyle(color: Colors.grey.shade300),
-        bodyMedium: TextStyle(color: Colors.grey.shade400),
-        titleMedium: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        headlineSmall: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-      ),
-      dividerColor: Colors.grey.shade800,
     );
+    // --- END OF THEME DATA ---
 
     return MaterialApp(
       title: 'GrubTap',
@@ -195,13 +190,15 @@ class MyApp extends StatelessWidget {
       themeMode: themeProvider.themeMode,
       theme: baseLightTheme,
       darkTheme: baseDarkTheme,
-      initialRoute: AuthWrapper.routeName,
+      initialRoute: AuthWrapper.routeName, // Start with AuthWrapper
       onGenerateInitialRoutes: (initialRouteName) {
-        debugPrint("[onGenerateInitialRoutes] Initial route name received: $initialRouteName");
+        // This handles when the app is launched by an external link.
+        debugPrint("[onGenerateInitialRoutes] Initial route name from OS: $initialRouteName");
+        // We always go to AuthWrapper first, and AuthWrapper will handle the deep link.
         return [
           MaterialPageRoute(
-            builder: (_) => const AuthWrapper(),
-            settings: RouteSettings(name: initialRouteName),
+            builder: (_) => const AuthWrapper(), // Key might be needed if state depends on initialRoute
+            settings: RouteSettings(name: initialRouteName), // Pass the original link name
           ),
         ];
       },
@@ -209,57 +206,110 @@ class MyApp extends StatelessWidget {
         debugPrint("[onGenerateRoute] Received route settings: Name: ${settings.name}, Args: ${settings.arguments}");
         Uri uri;
         try {
-          uri = Uri.parse(settings.name ?? AuthWrapper.routeName);
+          uri = Uri.parse(settings.name ?? AuthWrapper.routeName); // Default to AuthWrapper if name is null
         } catch (e) {
           debugPrint("[onGenerateRoute] Error parsing settings.name ('${settings.name}') as URI: $e. Using path directly.");
           uri = Uri(path: settings.name ?? AuthWrapper.routeName);
         }
-        debugPrint("[onGenerateRoute] Parsed URI. Path: '${uri.path}', Query: ${uri.queryParameters}, Fragment: '${uri.fragment}', HasAbsolutePath: ${uri.hasAbsolutePath}");
+        debugPrint("[onGenerateRoute] Parsed URI. Scheme: ${uri.scheme}, Host: ${uri.host}, Path: '${uri.path}', Query: ${uri.queryParameters}, Fragment: '${uri.fragment}'");
 
-        // Pass any URI with a code or fragment to AuthWrapper to handle first
-        if (uri.queryParameters.containsKey('code') || (uri.fragment.isNotEmpty && (uri.fragment.contains('access_token') || uri.fragment.contains('type=')))) {
-          debugPrint("[onGenerateRoute] Auth-related link (code/fragment) found. Routing to AuthWrapper: ${settings.name}");
-          return MaterialPageRoute(builder: (_) => AuthWrapper(key: UniqueKey()), settings: RouteSettings(name: settings.name, arguments: settings.arguments));
+        // If it's a deep link with our custom scheme, or a Supabase auth fragment,
+        // or has a code query param, let AuthWrapper handle it again with a UniqueKey
+        // to ensure it re-evaluates the link, UNLESS it's the exact same route and args already.
+        if (uri.scheme == 'myapp' ||
+            (uri.fragment.isNotEmpty && (uri.fragment.contains("access_token") || uri.fragment.contains('code='))) || // Some Supabase links use code in fragment
+            uri.queryParameters.containsKey('code')) {
+
+          final currentRoute = ModalRoute.of(navigatorKey.currentContext!)?.settings;
+          bool isSameRouteAndArgs = currentRoute?.name == settings.name &&
+              mapEquals(currentRoute?.arguments as Map?, settings.arguments as Map?);
+          // Use mapEquals for argument comparison if they are maps.
+          // Adjust if arguments are not always maps.
+
+          if (!isSameRouteAndArgs) {
+            debugPrint("[onGenerateRoute] Auth-related link detected: ${settings.name}. Routing to AuthWrapper with UniqueKey.");
+            return MaterialPageRoute(
+                builder: (_) => AuthWrapper(key: UniqueKey()), // Force AuthWrapper to rebuild and re-check
+                settings: settings // Pass original settings
+            );
+          } else {
+            debugPrint("[onGenerateRoute] Auth-related link ${settings.name} is already the current route for AuthWrapper with same args. Allowing standard switch.");
+          }
         }
 
-        // Handle specific path-based deep links if they aren't auth related (or if AuthWrapper is intended to handle them)
-        if (uri.scheme == 'myapp' && uri.host == 'password-reset' && uri.queryParameters.containsKey('code')) {
-          debugPrint("[onGenerateRoute] Specific 'myapp://password-reset?code=...' link. Routing to AuthWrapper.");
-          return MaterialPageRoute(builder: (_) => AuthWrapper(key: UniqueKey()), settings: RouteSettings(name: settings.name, arguments: settings.arguments));
-        }
-
-
+        // Determine the actual path for the switch statement
         String routePath = uri.path;
         if (routePath.isEmpty && (settings.name == null || settings.name == "/" || settings.name == "")) {
-          routePath = AuthWrapper.routeName;
+          routePath = AuthWrapper.routeName; // Default to AuthWrapper if path is empty
         } else if (routePath.isNotEmpty && !routePath.startsWith('/')) {
-          routePath = '/$routePath';
+          routePath = '/$routePath'; // Ensure path starts with '/'
         }
         debugPrint("[onGenerateRoute] Evaluating named route path for switch: '$routePath'");
 
         switch (routePath) {
-          case AuthWrapper.routeName: return MaterialPageRoute(builder: (_) => const AuthWrapper(), settings: settings);
-          case LoginScreen.routeName: return MaterialPageRoute(builder: (_) => const LoginScreen(), settings: settings);
-          case SignupScreen.routeName: return MaterialPageRoute(builder: (_) => const SignupScreen(), settings: settings);
-          case ForgotPasswordScreen.routeName: return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen(), settings: settings);
-          case ResetPasswordScreen.routeName: // ResetPasswordScreen will get args if _handleDeepLink sends them
-            return MaterialPageRoute(builder: (_) => const ResetPasswordScreen(), settings: settings);
-          case InviteAcceptScreen.routeName:  // InviteAcceptScreen will get args if _handleDeepLink sends them
+          case AuthWrapper.routeName:
+            return MaterialPageRoute(builder: (_) => const AuthWrapper(), settings: settings);
+          case LoginScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const LoginScreen(), settings: settings);
+          case SignupScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const SignupScreen(), settings: settings);
+          case ForgotPasswordScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen(), settings: settings);
+          case ResetPasswordScreen.routeName:
+            final args = settings.arguments as Map<String, dynamic>?;
+            return MaterialPageRoute(builder: (_) => ResetPasswordScreen(
+              recoveryCodeFromArgs: args?['recoveryCode'],
+              emailFromArgs: args?['email'],
+            ), settings: settings);
+          case InviteAcceptScreen.routeName:
+          // final args = settings.arguments as Map<String, dynamic>?; // If needed
             return MaterialPageRoute(builder: (_) => const InviteAcceptScreen(), settings: settings);
-          case ForceChangePasswordScreen.routeName: return MaterialPageRoute(builder: (_) => const ForceChangePasswordScreen(comesFromTempPassword: false), settings: settings);
-          case HomeScreen.routeName: return MaterialPageRoute(builder: (_) => const HomeScreen(), settings: settings);
-          case AdminDashboardScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminDashboardScreen(), settings: settings);
-          case CompanyDashboardScreen.routeName: return MaterialPageRoute(builder: (_) => const CompanyDashboardScreen(), settings: settings);
-          case AdminInviteUserScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminInviteUserScreen(), settings: settings);
-          case AdminManageUsersScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminManageUsersScreen(), settings: settings);
-          case AdminManageCompaniesScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminManageCompaniesScreen(), settings: settings);
-          case AdminPermissionsScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminPermissionsScreen(), settings: settings);
-          case AdminManageFoodsScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminManageFoodsScreen(), settings: settings);
-          case AdminManageOrdersScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminManageOrdersScreen(), settings: settings);
-          case AdminAnalyticsScreen.routeName: return MaterialPageRoute(builder: (_) => const AdminAnalyticsScreen(), settings: settings);
-          case ManageFoodsScreen.routeName: return MaterialPageRoute(builder: (_) => const ManageFoodsScreen(), settings: settings);
-          case CompanyOrdersScreen.routeName: return MaterialPageRoute(builder: (_) => const CompanyOrdersScreen(), settings: settings);
-          case OrderHistoryScreen.routeName: return MaterialPageRoute(builder: (_) => const OrderHistoryScreen(), settings: settings);
+          case ForceChangePasswordScreen.routeName:
+            final args = settings.arguments as Map<String, dynamic>?;
+            return MaterialPageRoute(builder: (_) => ForceChangePasswordScreen(
+                comesFromTempPassword: args?['comesFromTempPassword'] ?? false
+            ), settings: settings);
+          case HomeScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const HomeScreen(), settings: settings);
+          case CompanyDashboardScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const CompanyDashboardScreen(), settings: settings);
+          case AdminDashboardScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminDashboardScreen(), settings: settings);
+          case ManageFoodsScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const ManageFoodsScreen(), settings: settings);
+          case CompanyOrdersScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const CompanyOrdersScreen(), settings: settings);
+          case OrderHistoryScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const OrderHistoryScreen(), settings: settings);
+
+        // Route for EditOrderScreen
+          case EditOrderScreen.routeName:
+            final args = settings.arguments;
+            if (args is OrderHistoryDisplayItem) { // Check if argument is the expected type
+              return MaterialPageRoute(
+                builder: (_) => EditOrderScreen(orderToEdit: args),
+                settings: settings,
+              );
+            }
+            // Fallback if args are not correct for EditOrderScreen
+            debugPrint("[onGenerateRoute] Error: EditOrderScreen requires OrderHistoryDisplayItem argument. Received: $args");
+            return MaterialPageRoute(builder: (_) => UndefinedView(name: "Edit Order - Invalid Arguments"));
+
+          case AdminInviteUserScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminInviteUserScreen(), settings: settings);
+          case AdminManageUsersScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminManageUsersScreen(), settings: settings);
+          case AdminManageCompaniesScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminManageCompaniesScreen(), settings: settings);
+          case AdminPermissionsScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminPermissionsScreen(), settings: settings);
+          case AdminManageFoodsScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminManageFoodsScreen(), settings: settings);
+          case AdminManageOrdersScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminManageOrdersScreen(), settings: settings);
+          case AdminAnalyticsScreen.routeName:
+            return MaterialPageRoute(builder: (_) => const AdminAnalyticsScreen(), settings: settings);
+
           default:
             debugPrint("[onGenerateRoute] Switch case: Path '$routePath' (from settings.name: '${settings.name}') did not match. Navigating to UndefinedView.");
             return MaterialPageRoute(builder: (_) => UndefinedView(name: settings.name));
@@ -274,7 +324,7 @@ class MyApp extends StatelessWidget {
 }
 
 class AuthWrapper extends StatefulWidget {
-  static const String routeName = '/';
+  static const String routeName = '/'; // Your AuthWrapper is the initial route
   const AuthWrapper({super.key});
 
   @override
@@ -285,21 +335,25 @@ class _AuthWrapperState extends State<AuthWrapper> {
   AuthStatus _authStatus = AuthStatus.unknown;
   String? _currentRole;
   final supabase = Supabase.instance.client;
-  late AppLinks _appLinks;
+  late AppLinks _appLinks; // For handling deep links when app is already running
   StreamSubscription<Uri>? _linkSubscription;
+  String? _currentlyProcessingLink; // To avoid processing the same link multiple times rapidly
 
   @override
   void initState() {
     super.initState();
+    debugPrint("[AuthWrapper] initState. Key: ${widget.key}. Instance: $hashCode");
+
+    // Initialize session listener from your SessionService
     SessionService.initializeSessionListener(
       onSessionRestored: (User? user) {
-        debugPrint("[AuthWrapper] SessionService.onSessionRestored. User: ${user?.id}");
+        debugPrint("[AuthWrapper][$hashCode] SessionService.onSessionRestored. User: ${user?.id}");
         _evaluateSessionAndRole();
       },
       onSessionExpiredOrSignedOut: () {
-        debugPrint("[AuthWrapper] SessionService.onSessionExpiredOrSignedOut.");
+        debugPrint("[AuthWrapper][$hashCode] SessionService.onSessionExpiredOrSignedOut.");
         if (mounted) {
-          setState(() {
+          setStateIfMounted(() {
             _authStatus = AuthStatus.unauthenticated;
             _currentRole = null;
           });
@@ -307,249 +361,298 @@ class _AuthWrapperState extends State<AuthWrapper> {
       },
     );
 
+    // Using addPostFrameCallback to ensure context is available for ModalRoute
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      debugPrint("[AuthWrapper] addPostFrameCallback: Evaluating initial state.");
-      final routeSettings = ModalRoute.of(context)?.settings;
-      final String? initialRouteNameFromFlutter = routeSettings?.name;
-      debugPrint("[AuthWrapper] Initial route name from ModalRoute: '$initialRouteNameFromFlutter'");
+      if (!mounted) return;
+      debugPrint("[AuthWrapper][$hashCode] initState: addPostFrameCallback.");
 
-      bool initialLinkHandledByModalRoute = false;
-      if (initialRouteNameFromFlutter != null &&
-          initialRouteNameFromFlutter != AuthWrapper.routeName &&
-          initialRouteNameFromFlutter.isNotEmpty) {
+      final routeSettings = ModalRoute.of(context)?.settings;
+      final String? initialRouteNameFromFlutter = routeSettings?.name; // This might be the deep link URI
+      final dynamic initialRouteArgsFromFlutter = routeSettings?.arguments;
+      debugPrint("[AuthWrapper][$hashCode] Initial route from ModalRoute: Name: '$initialRouteNameFromFlutter', Args: $initialRouteArgsFromFlutter");
+
+      bool initialLinkAttemptedByModalRoute = false;
+      if (initialRouteNameFromFlutter != null && initialRouteNameFromFlutter.isNotEmpty) {
         try {
-          Uri initialUriFromRoute = Uri.parse(initialRouteNameFromFlutter);
-          if (initialUriFromRoute.hasFragment ||
-              initialUriFromRoute.queryParameters.containsKey('code') ||
-              initialUriFromRoute.scheme.isNotEmpty) {
-            debugPrint("[AuthWrapper] Initial URI from ModalRoute ('$initialUriFromRoute') looks like a deep link. Handling...");
-            _handleDeepLink(initialUriFromRoute);
-            initialLinkHandledByModalRoute = true;
+          Uri initialUri = Uri.parse(initialRouteNameFromFlutter);
+          // Check if it's a deep link that AuthWrapper should process
+          if (_isAuthDeepLink(initialUri)) {
+            debugPrint("[AuthWrapper][$hashCode] Initial URI from ModalRoute ('$initialUri') is an auth deep link. Processing...");
+            _processDeepLinkIfNewUrl(initialUri, initialRouteArgsFromFlutter);
+            initialLinkAttemptedByModalRoute = true;
           } else {
-            debugPrint("[AuthWrapper] Initial URI ('$initialUriFromRoute') not a deep link for _handleDeepLink. Checking session.");
+            debugPrint("[AuthWrapper][$hashCode] Initial URI ('$initialUri') from ModalRoute not considered auth deep link for direct handling by _processDeepLinkIfNewUrl.");
           }
         } catch (e) {
-          debugPrint("[AuthWrapper] Error parsing initial URI ('$initialRouteNameFromFlutter') from ModalRoute: $e. Checking session.");
+          // Not a URI, could be a named route like '/reset-password' if onGenerateRoute passed args
+          if (initialRouteNameFromFlutter == ResetPasswordScreen.routeName && initialRouteArgsFromFlutter is Map) {
+            debugPrint("[AuthWrapper][$hashCode] Initial route is named ResetPasswordScreen with args. Trusting onGenerateRoute and ResetPasswordScreen.initState to handle.");
+            initialLinkAttemptedByModalRoute = true;
+          } else if (initialRouteNameFromFlutter == EditOrderScreen.routeName && initialRouteArgsFromFlutter is OrderHistoryDisplayItem) {
+            debugPrint("[AuthWrapper][$hashCode] Initial route is named EditOrderScreen with args. Trusting onGenerateRoute and EditOrderScreen.initState to handle.");
+            initialLinkAttemptedByModalRoute = true;
+          } else {
+            debugPrint("[AuthWrapper][$hashCode] Error parsing initial URI ('$initialRouteNameFromFlutter') from ModalRoute or not a direct auth link: $e.");
+          }
         }
       }
 
-      if (!initialLinkHandledByModalRoute) {
+      // Initialize app_links to listen for further deep links
+      _initAppLinks(modalRouteAttemptedByModalRoute: initialLinkAttemptedByModalRoute);
+
+      // If no deep link was processed by ModalRoute, and auth status is still unknown, check current Supabase session.
+      // This covers normal app starts without a deep link.
+      if (!initialLinkAttemptedByModalRoute && _authStatus == AuthStatus.unknown) {
+        debugPrint("[AuthWrapper][$hashCode] No initial deep link processed by ModalRoute, checking Supabase session.");
         _checkSupabaseSession();
+      } else if (initialLinkAttemptedByModalRoute && _authStatus == AuthStatus.unknown) {
+        // If a link was attempted by ModalRoute, give a slight delay for Supabase client to potentially process it
+        // (e.g., if it was a fragment link like #access_token=...) before falling back to session check.
+        Future.delayed(const Duration(milliseconds: 300), () { // Short delay
+          if (mounted && _authStatus == AuthStatus.unknown) { // Check again after delay
+            debugPrint("[AuthWrapper][$hashCode] After delay for initial link processing from ModalRoute, checking Supabase session.");
+            _checkSupabaseSession();
+          }
+        });
       }
-      _initAppLinks(initialLinkPotentiallyHandled: initialLinkHandledByModalRoute, initialUriStringFromRoute: initialRouteNameFromFlutter);
     });
   }
 
+  // Helper to determine if a URI is one that AuthWrapper should actively parse for navigation
+  bool _isAuthDeepLink(Uri uri) {
+    bool isMyAppScheme = uri.scheme == 'myapp';
+    bool hasCodeQuery = uri.queryParameters.containsKey('code'); // Common in our password reset
+    // Supabase client handles fragments like #access_token=... directly, so we might not need to intercept all of them here,
+    // but password-reset with code is one we explicitly handle.
+    return isMyAppScheme && (uri.host == 'password-reset' || uri.host == 'invite') && hasCodeQuery;
+  }
+
+  // Wrapper to prevent processing the same link multiple times in quick succession
+  void _processDeepLinkIfNewUrl(Uri uri, [dynamic routeArgs]) {
+    String comparableUri = uri.toString(); // Use the full URI string for comparison
+    if (_currentlyProcessingLink == comparableUri) {
+      debugPrint("[AuthWrapper][$hashCode] _processDeepLinkIfNewUrl: Link $uri already processed or being processed. Skipping.");
+      return;
+    }
+    _currentlyProcessingLink = comparableUri;
+    debugPrint("[AuthWrapper][$hashCode] _processDeepLinkIfNewUrl: New link to process: $uri with routeArgs: $routeArgs");
+
+    _handleDeepLink(uri, routeArgs); // Pass the arguments from ModalRoute if available
+
+    // Clear the currently processing link after a timeout to allow reprocessing if needed later (e.g., user clicks same link again)
+    Future.delayed(const Duration(seconds: 3), () { // 3 second cooldown
+      if (_currentlyProcessingLink == comparableUri) {
+        _currentlyProcessingLink = null;
+        debugPrint("[AuthWrapper][$hashCode] _processDeepLinkIfNewUrl: Cleared _currentlyProcessingLink for $uri");
+      }
+    });
+  }
+
+  // Initial check of Supabase session if no deep link handled it
   void _checkSupabaseSession() {
-    debugPrint("[AuthWrapper] _checkSupabaseSession. Current session: ${supabase.auth.currentSession != null}, AuthStatus: $_authStatus");
-    if (supabase.auth.currentSession != null && _authStatus == AuthStatus.unknown) {
-      _evaluateSessionAndRole();
-    } else if (supabase.auth.currentSession == null && _authStatus == AuthStatus.unknown) {
-      if (mounted) setState(() => _authStatus = AuthStatus.unauthenticated);
+    debugPrint("[AuthWrapper][$hashCode] _checkSupabaseSession. Current session: ${supabase.auth.currentSession != null}, AuthStatus: $_authStatus");
+    if (_authStatus == AuthStatus.unknown) { // Only if status hasn't been determined by a deep link
+      if (supabase.auth.currentSession != null) {
+        _evaluateSessionAndRole();
+      } else {
+        if (mounted) setStateIfMounted(() => _authStatus = AuthStatus.unauthenticated);
+      }
     }
   }
 
-  Future<void> _initAppLinks({bool initialLinkPotentiallyHandled = false, String? initialUriStringFromRoute}) async {
+
+  Future<void> _initAppLinks({bool modalRouteAttemptedByModalRoute = false}) async {
     _appLinks = AppLinks();
-    if (!initialLinkPotentiallyHandled) {
+    debugPrint("[AuthWrapper][$hashCode] _initAppLinks called. modalRouteAttempted: $modalRouteAttemptedByModalRoute");
+
+    // Get the initial link if the app was launched by a deep link
+    // and if ModalRoute didn't already try to process a link.
+    if (!modalRouteAttemptedByModalRoute) {
       try {
         final initialUriFromAppLinksPkg = await _appLinks.getInitialAppLink();
         if (initialUriFromAppLinksPkg != null && mounted) {
-          debugPrint("[AuthWrapper] _initAppLinks: Initial deep link from app_links package: $initialUriFromAppLinksPkg");
-          if (initialUriStringFromRoute != initialUriFromAppLinksPkg.toString()) {
-            debugPrint("[AuthWrapper] _initAppLinks: Handling initial URI from app_links.");
-            _handleDeepLink(initialUriFromAppLinksPkg);
-          } else {
-            debugPrint("[AuthWrapper] _initAppLinks: app_links URI same as ModalRoute, likely processed.");
-          }
+          debugPrint("[AuthWrapper][$hashCode] _initAppLinks: Initial deep link from app_links package: $initialUriFromAppLinksPkg. Handling...");
+          _processDeepLinkIfNewUrl(initialUriFromAppLinksPkg); // No explicit routeArgs from here
         } else {
-          debugPrint("[AuthWrapper] _initAppLinks: No initial deep link from app_links package.");
+          debugPrint("[AuthWrapper][$hashCode] _initAppLinks: No initial deep link from app_links package.");
         }
+      } on PlatformException catch (e) {
+        debugPrint("[AuthWrapper][$hashCode] _initAppLinks: Failed to get initial deep link (PlatformException): ${e.message}");
       } catch (e) {
-        debugPrint("[AuthWrapper] _initAppLinks: Error getting initial deep link: $e");
+        debugPrint("[AuthWrapper][$hashCode] _initAppLinks: Error getting initial deep link: $e");
       }
     } else {
-      debugPrint("[AuthWrapper] _initAppLinks: Skipping app_links.getInitialAppLink().");
+      debugPrint("[AuthWrapper][$hashCode] _initAppLinks: Skipping app_links.getInitialAppLink() as ModalRoute might have handled initial link.");
     }
 
+    // Listen to further deep links when the app is already running
+    _linkSubscription?.cancel(); // Cancel any existing subscription
     _linkSubscription = _appLinks.uriLinkStream.listen((Uri uri) {
       if (mounted) {
-        debugPrint("[AuthWrapper] Subsequent deep link from stream: $uri. Handling...");
-        _handleDeepLink(uri);
+        debugPrint("[AuthWrapper][$hashCode] Subsequent deep link from app_links stream: $uri. Handling...");
+        _processDeepLinkIfNewUrl(uri); // No explicit routeArgs from here
       }
     }, onError: (err) {
-      debugPrint("[AuthWrapper] Error listening to app_links stream: $err");
+      debugPrint("[AuthWrapper][$hashCode] Error listening to app_links stream: $err");
+      if (err is PlatformException) {
+        debugPrint("[AuthWrapper][$hashCode] PlatformException from app_links stream: ${err.message}");
+      }
     });
   }
 
-  // Updated _handleDeepLink to pass 'recoveryCode' as argument
-  void _handleDeepLink(Uri uri) {
+  void _handleDeepLink(Uri uri, [dynamic navArgumentsFromModalRoute]) {
+    // This method decides what to do based on the URI
+    // It might navigate to ResetPasswordScreen, InviteAcceptScreen, etc.
+    // It should also handle cases where Supabase client processes the link (e.g. fragment links)
     debugPrint("----------------------------------------------------");
-    debugPrint("[AuthWrapper] _handleDeepLink: START PROCESSING URI: $uri");
-    debugPrint("[AuthWrapper] _handleDeepLink: Scheme: '${uri.scheme}', Host: '${uri.host}', Path: '${uri.path}'");
-    debugPrint("[AuthWrapper] _handleDeepLink: QueryParams: ${uri.queryParameters}");
-    debugPrint("[AuthWrapper] _handleDeepLink: Fragment: '${uri.fragment}'");
+    debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: START PROCESSING URI: $uri");
+    debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Nav Args from ModalRoute: $navArgumentsFromModalRoute");
     debugPrint("----------------------------------------------------");
 
     final NavigatorState? nav = navigatorKey.currentState;
     if (nav == null) {
-      debugPrint("[AuthWrapper] _handleDeepLink: Navigator state NULL. CANNOT NAVIGATE.");
+      debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Navigator state NULL. CANNOT NAVIGATE.");
       return;
     }
 
-    final fragment = uri.fragment;
     final queryParams = uri.queryParameters;
+    bool navigatedByAuthWrapper = false; // Flag to see if this function initiated navigation
 
-    // --- NEW: PRIORITIZE HOST AND PATH FOR PASSWORD RESET WITH ?code= ---
-    // This condition is now at the top to catch `myapp://password-reset?code=...`
-    if (uri.scheme == 'myapp' && uri.host == 'password-reset' && queryParams.containsKey('code') && fragment.isEmpty) {
+    // --- Password Reset: myapp://password-reset?code=RECOVERY_CODE&email=USER_EMAIL ---
+    if (uri.scheme == 'myapp' && uri.host == 'password-reset' && queryParams.containsKey('code')) {
       final String? recoveryCode = queryParams['code'];
-      debugPrint("[AuthWrapper] _handleDeepLink: Detected 'myapp://password-reset?code=$recoveryCode'. Navigating to ResetPasswordScreen with code.");
-      WidgetsBinding.instance.addPostFrameCallback((_) { // Ensure navigation happens after current build cycle
-        if (mounted && navigatorKey.currentState != null) {
-          navigatorKey.currentState!.pushNamedAndRemoveUntil(
-            ResetPasswordScreen.routeName,
-                (route) => false,
-            arguments: {'recoveryCode': recoveryCode}, // Pass the code
-          );
-          debugPrint("[AuthWrapper] _handleDeepLink: Navigation to ResetPasswordScreen with recoveryCode PUSHED.");
-        } else {
-          debugPrint("[AuthWrapper] _handleDeepLink (password-reset?code=): CANNOT NAVIGATE. Mounted: $mounted");
-        }
-      });
-      // Even though we navigated, the Supabase client might be processing this code.
-      // Call _evaluateSessionAndRole after a delay to reflect any session changes.
-      Future.delayed(const Duration(milliseconds: 300), (){
-        if(mounted) {
-          debugPrint("[AuthWrapper] _handleDeepLink (password-reset?code=): Triggering _evaluateSessionAndRole after navigation attempt.");
-          _evaluateSessionAndRole();
-        }
-      });
-      return; // Handled this specific password reset case
-    }
-    // --- END OF NEW LOGIC for myapp://password-reset?code=... ---
+      // Email might be in the query from ForgotPasswordScreen or we might need another way if not
+      final String? emailForReset = queryParams['email'];
 
+      if (recoveryCode != null && emailForReset != null) {
+        final argumentsForScreen = {
+          'recoveryCode': recoveryCode,
+          'email': emailForReset,
+        };
+        debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Detected 'myapp://password-reset?code=...&email=...'. Args: $argumentsForScreen. Navigating to ResetPasswordScreen.");
 
-    // Existing logic for fragment-based auth (invites, standard recovery if it ever sends fragment)
-    if (fragment.isNotEmpty) {
-      final params = Uri.splitQueryString(fragment);
-      final String? type = params['type'];
-      debugPrint("[AuthWrapper] _handleDeepLink: Parsed fragment type: '$type'");
-
-      if (type == 'recovery') {
-        debugPrint("[AuthWrapper] _handleDeepLink: TYPE IS 'recovery' from fragment. Scheduling navigation to ResetPasswordScreen (standard flow).");
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Future.delayed(const Duration(milliseconds: 200), () {
-            if (mounted && navigatorKey.currentState != null) {
-              final currentUser = supabase.auth.currentUser;
-              debugPrint("[AuthWrapper] _handleDeepLink (fragment recovery): Navigating. Supabase currentUser: ${currentUser?.id}");
-              if (currentUser != null) {
-                navigatorKey.currentState!.pushNamedAndRemoveUntil(
-                    ResetPasswordScreen.routeName, (route) => false);
-                debugPrint("[AuthWrapper] _handleDeepLink (fragment recovery): Navigation PUSHED.");
-              } else {
-                debugPrint("[AuthWrapper] _handleDeepLink (fragment recovery): Supabase currentUser is NULL. SKIPPING navigation.");
-                if(mounted) _evaluateSessionAndRole();
-              }
-            }
-          });
-        });
-        return;
-      } else if (type == 'invite') {
-        debugPrint("[AuthWrapper] _handleDeepLink: TYPE IS 'invite' from fragment. Scheduling navigation to InviteAcceptScreen.");
+        // Ensure navigation happens after the current build cycle
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && navigatorKey.currentState != null) {
-            String? inviteTokenForScreen = params['invite_token'];
             navigatorKey.currentState!.pushNamedAndRemoveUntil(
-                InviteAcceptScreen.routeName, (route) => false,
-                arguments: {'token': inviteTokenForScreen});
-            debugPrint("[AuthWrapper] _handleDeepLink: Navigation to InviteAcceptScreen PUSHED.");
+              ResetPasswordScreen.routeName,
+                  (route) => false, // Remove all previous routes
+              arguments: argumentsForScreen,
+            );
+            navigatedByAuthWrapper = true;
           }
         });
-        return;
-      } else if (fragment.contains('access_token') && !fragment.contains('error_description')) {
-        debugPrint("[AuthWrapper] _handleDeepLink: Generic 'access_token' in fragment. Supabase client handles session.");
-        Future.delayed(const Duration(milliseconds: 250), () {
-          if (mounted) _evaluateSessionAndRole();
+      } else {
+        debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: 'myapp://password-reset' with code, but missing email in query. Code: $recoveryCode, Email from URL: $emailForReset. Cannot proceed with Edge Function automatically.");
+        // Potentially navigate to ResetPasswordScreen without email, and let it prompt or show error
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && navigatorKey.currentState != null) {
+            navigatorKey.currentState!.pushNamedAndRemoveUntil(ResetPasswordScreen.routeName, (route) => false, arguments: {'recoveryCode': recoveryCode});
+            navigatedByAuthWrapper = true;
+          }
         });
-        return;
-      } else if (fragment.contains('error_description')) {
-        final String? errorDescription = params['error_description'];
-        debugPrint("[AuthWrapper] _handleDeepLink: Auth error in fragment: $errorDescription");
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Auth error: ${errorDescription ?? 'Unknown'}"), backgroundColor: Colors.red),
-          );
-        }
-        if(mounted) _evaluateSessionAndRole();
-        return;
       }
     }
-
-    // Fallback for other ?code= query parameters that are NOT 'myapp://password-reset?code=...'
-    // This ensures general OAuth codes (if you use them elsewhere) are still processed.
-    if (queryParams.containsKey('code') && !uri.hasFragment) {
-      // This condition is now implicitly met if the specific `myapp://password-reset?code=` was not caught above.
-      debugPrint("[AuthWrapper] _handleDeepLink: URI has generic '?code=' (no fragment, and not the specific password-reset?code= case). Supabase client handles. Evaluating session.");
-      Future.delayed(const Duration(milliseconds: 250), () {
-        if(mounted) _evaluateSessionAndRole();
+    // --- Invite Link: myapp://invite... (Supabase often uses fragments for this) ---
+    else if (uri.scheme == 'myapp' && uri.host == 'invite') {
+      debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Detected 'myapp://invite'. Navigating to InviteAcceptScreen. Fragment: ${uri.fragment}");
+      // Supabase client typically handles the fragment with the invite token.
+      // We just need to navigate to a screen where the user can complete their profile/set password.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && navigatorKey.currentState != null) {
+          navigatorKey.currentState!.pushNamedAndRemoveUntil(
+            InviteAcceptScreen.routeName, // Or ResetPasswordScreen if invite implies setting/updating a password
+                (route) => false,
+            // arguments: { 'inviteToken': tokenFromFragmentIfAny } // If InviteAcceptScreen needs it
+          );
+          navigatedByAuthWrapper = true;
+        }
       });
-      return;
+    }
+    // --- Supabase Client Handled Links (e.g., #access_token=..., type=recovery in fragment) ---
+    // If Supabase client handles the fragment for session, our session listener will pick it up.
+    // If it's a type=recovery in fragment, we might want to navigate to ResetPasswordScreen.
+    else if (uri.fragment.isNotEmpty) {
+      debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Detected fragment link: ${uri.fragment}.");
+      final paramsInFragment = Uri.splitQueryString(uri.fragment); // Basic parsing
+      if (paramsInFragment['type'] == 'recovery' && paramsInFragment.containsKey('access_token')) {
+        debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Fragment is type=recovery. Supabase client should set session. Navigating to ResetPasswordScreen (no args needed).");
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && navigatorKey.currentState != null) {
+            navigatorKey.currentState!.pushNamedAndRemoveUntil(ResetPasswordScreen.routeName, (route) => false);
+            navigatedByAuthWrapper = true;
+          }
+        });
+      } else if (paramsInFragment.containsKey('access_token')) {
+        debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Fragment contains access_token. Supabase client should handle session. Session listener will evaluate.");
+        // No immediate navigation needed here; session listener will trigger _evaluateSessionAndRole
+      }
+    }
+    else {
+      debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: URI did not match specific auth patterns for direct navigation by AuthWrapper. URI: $uri");
     }
 
-    // Default action if no specific auth pattern matched
-    debugPrint("[AuthWrapper] _handleDeepLink: No specific auth action taken by link, or not an auth link. Evaluating current session state. URI: $uri");
-    if (mounted) _evaluateSessionAndRole();
+    // After attempting to handle any deep link, or if no specific deep link action was taken,
+    // give Supabase a moment (if fragment was involved) and then re-evaluate session.
+    // This is especially important if Supabase client processes a fragment link and sets a session.
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        debugPrint("[AuthWrapper][$hashCode] _handleDeepLink: Post-processing delay. Triggering _evaluateSessionAndRole. Navigated by AuthWrapper: $navigatedByAuthWrapper");
+        _evaluateSessionAndRole();
+      }
+    });
   }
 
   Future<void> _evaluateSessionAndRole() async {
     if (!mounted) {
-      debugPrint("[AuthWrapper] _evaluateSessionAndRole: Not mounted.");
+      debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: Not mounted. Skipping.");
       return;
     }
-    debugPrint("[AuthWrapper] _evaluateSessionAndRole: Evaluating. Current AuthStatus: $_authStatus");
+    debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: Evaluating. Current AuthStatus: $_authStatus");
 
-    final currentUser = SessionService.getCurrentUser();
-    debugPrint("[AuthWrapper] _evaluateSessionAndRole: User from SessionService: ${currentUser?.id}, Email: ${currentUser?.email}");
+    final currentUser = SessionService.getCurrentUser(); // From your service
+    debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: User from SessionService: ${currentUser?.id}, Email: ${currentUser?.email}");
 
     AuthStatus newAuthStatus;
     String? newCurrentRole;
 
     if (currentUser != null) {
-      final role = await SessionService.getUserRole();
-      final userMetadata = SessionService.getCachedUserMetadata() ?? {};
-      final bool requiresPasswordChange = userMetadata['requires_password_change'] == true ||
-          userMetadata['temp_password_active'] == true;
-      debugPrint("[AuthWrapper] _evaluateSessionAndRole: User authenticated. Role: '$role', RequiresPassChange: $requiresPasswordChange");
+      newCurrentRole = await SessionService.getUserRole(); // From your service
+      final userMetadata = SessionService.getCachedUserMetadata() ?? currentUser.userMetadata ?? {};
+      final bool requiresPasswordChange = userMetadata['requires_password_change'] == true || userMetadata['temp_password_active'] == true;
+      debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: User authenticated. Role: '$newCurrentRole', RequiresPassChange: $requiresPasswordChange, Metadata: $userMetadata");
 
       if (requiresPasswordChange) {
+        // Even if role is null, if password change is required, they are "authenticated" but need action.
         newAuthStatus = AuthStatus.authenticatedWithRole;
-        newCurrentRole = role ?? 'user';
-      } else if (role == null || role.isEmpty) {
+        newCurrentRole = newCurrentRole ?? 'user'; // Default if role is somehow null but pass change needed
+      } else if (newCurrentRole == null || newCurrentRole.isEmpty) {
         newAuthStatus = AuthStatus.authenticatedNoRole;
-        newCurrentRole = null;
       } else {
         newAuthStatus = AuthStatus.authenticatedWithRole;
-        newCurrentRole = role;
       }
     } else {
-      debugPrint("[AuthWrapper] _evaluateSessionAndRole: No user session found.");
+      debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: No user session found.");
       newAuthStatus = AuthStatus.unauthenticated;
       newCurrentRole = null;
     }
 
+    if (!mounted) return;
+
+    // Only update state if there's an actual change to prevent unnecessary rebuilds
     if (_authStatus != newAuthStatus || _currentRole != newCurrentRole) {
-      debugPrint("[AuthWrapper] _evaluateSessionAndRole: State changing to $newAuthStatus, Role: $newCurrentRole");
+      debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: State changing from ($_authStatus, $_currentRole) to ($newAuthStatus, $newCurrentRole)");
       setStateIfMounted(() {
         _authStatus = newAuthStatus;
         _currentRole = newCurrentRole;
       });
     } else {
-      debugPrint("[AuthWrapper] _evaluateSessionAndRole: State ($newAuthStatus, $newCurrentRole) is already current.");
+      debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: State ($newAuthStatus, $newCurrentRole) is already current. No UI change required from this evaluation.");
     }
-    debugPrint("[AuthWrapper] _evaluateSessionAndRole: Finished. Final AuthStatus: $_authStatus");
+    debugPrint("[AuthWrapper][$hashCode] _evaluateSessionAndRole: Finished. Final AuthStatus: $_authStatus, Role: $_currentRole");
   }
 
+  // Helper to ensure setState is only called if widget is still mounted
   void setStateIfMounted(VoidCallback fn) {
     if (mounted) {
       setState(fn);
@@ -558,16 +661,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   void dispose() {
-    debugPrint("[AuthWrapper] dispose called.");
+    debugPrint("[AuthWrapper][$hashCode] dispose called. Key: ${widget.key}. Instance: $hashCode");
     _linkSubscription?.cancel();
-    SessionService.disposeListener();
+    _linkSubscription = null;
+    // Consider if SessionService listener needs explicit disposal if not handled by SessionService itself
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint("[AuthWrapper][$hashCode] Building UI with Auth Status: $_authStatus, Role: $_currentRole. Key: ${widget.key}");
     Widget screenToShow;
-    debugPrint("[AuthWrapper] Building UI with Auth Status: $_authStatus, Role: $_currentRole");
 
     switch (_authStatus) {
       case AuthStatus.unknown:
@@ -577,6 +681,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         screenToShow = const LoginScreen();
         break;
       case AuthStatus.authenticatedNoRole:
+      // This case means user is logged in but role is missing or not determined
         screenToShow = Scaffold(
           appBar: AppBar(title: const Text("Account Issue")),
           body: Center(
@@ -586,29 +691,29 @@ class _AuthWrapperState extends State<AuthWrapper> {
                     const Icon(Icons.error_outline, color: Colors.red, size: 50),
                     const SizedBox(height: 16),
                     const Text(
-                      "Your account is missing role information or is not fully verified. Contact support.",
+                      "Your account is missing role information or is not fully verified. Please contact support or try logging in again.",
                       textAlign: TextAlign.center, style: TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton(
                         onPressed: () async {
-                          await SessionService.logout();
+                          await SessionService.logout(); // Use your logout method
                         },
                         child: const Text("Logout")),
                   ]))),
         );
         break;
       case AuthStatus.authenticatedWithRole:
-        final userMetadata = SessionService.getCachedUserMetadata() ?? {};
-        final bool requiresPasswordChange = userMetadata['requires_password_change'] == true ||
-            userMetadata['temp_password_active'] == true;
+        final userMetadata = SessionService.getCachedUserMetadata() ?? Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
+        final bool requiresPasswordChange = userMetadata['requires_password_change'] == true || userMetadata['temp_password_active'] == true;
 
         if (requiresPasswordChange) {
-          debugPrint("[AuthWrapper] User requires password change. Showing ForceChangePasswordScreen.");
-          screenToShow = const ForceChangePasswordScreen(comesFromTempPassword: true);
+          debugPrint("[AuthWrapper][$hashCode] User requires password change. Showing ForceChangePasswordScreen.");
+          screenToShow = const ForceChangePasswordScreen(comesFromTempPassword: true); // Pass appropriate flag
         } else {
-          debugPrint("[AuthWrapper] User authenticated ('$_currentRole'). Showing role-based screen.");
-          screenToShow = SessionService.getInitialRouteWidgetForRole(_currentRole);
+          // User is authenticated, has a role, and doesn't need immediate password change
+          debugPrint("[AuthWrapper][$hashCode] User authenticated ('$_currentRole'). Showing role-based screen: ${SessionService.getInitialRouteForRole(_currentRole)}");
+          screenToShow = SessionService.getInitialRouteWidgetForRole(_currentRole); // From your service
         }
         break;
     }
@@ -616,6 +721,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 }
 
+// Fallback widget for undefined routes
 class UndefinedView extends StatelessWidget {
   final String? name;
   const UndefinedView({super.key, this.name});
