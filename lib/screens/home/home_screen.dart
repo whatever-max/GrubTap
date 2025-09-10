@@ -3,6 +3,7 @@ import 'dart:async'; // For Timer
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart'; // For debugPrint
+import 'package:intl/intl.dart'; // <<< Added for DateFormat
 
 // Model imports
 import '../../models/food_model.dart'; // Ensure this path is correct
@@ -11,21 +12,23 @@ import '../../models/food_model.dart'; // Ensure this path is correct
 import '../../shared/custom_drawer.dart'; // Ensure this path is correct
 import '../../services/session_service.dart'; // Import SessionService to get role
 
-// REMOVED: import '../../config/app_routes.dart';
-
 class HomeScreen extends StatefulWidget {
   // Using a simple string literal for routeName
-  static const String routeName = '/home'; // <<<<<<< REVERTED
+  static const String routeName = '/home'; // This is correct from your clean version
 
-  const HomeScreen({super.key});
+  const HomeScreen({super.key}); // This is correct
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState(); // This is correct
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   final supabase = Supabase.instance.client;
   String? _currentUserRole;
+  // <<< ADDED for business logic >>>
+  String? _currentUsername;
+  String? _currentUserId;
+  List<FoodModel> _filteredFoodsForDropdown = []; // For visual filtering
 
   List<FoodModel> _allFoods = [];
   bool _isLoadingFoods = true;
@@ -44,11 +47,18 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _orderSuccessfullyPlaced = false;
   bool _orderWasCancelledByUser = false;
 
+  // <<< ADDED: Constants for business logic >>>
+  static const String _superAdminId = "ddbf93e1-f6bd-4295-a3a6-6348fe6fdf96";
+  static const List<String> _specialUsernames = ["Emtera", "Gerald"];
+  static const double _priceLimitGeneral = 3000.0;
+
+
   @override
   void initState() {
     super.initState();
     debugPrint('[HomeScreen] initState called.');
-    _fetchUserRoleAndThenLoadFoods();
+    // Modified to fetch full user context
+    _fetchUserContextAndThenLoadFoods();
   }
 
   void setStateIfMounted(VoidCallback fn) {
@@ -57,25 +67,57 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _fetchUserRoleAndThenLoadFoods() async {
-    debugPrint('[HomeScreen] _fetchUserRoleAndThenLoadFoods: Fetching user role...');
-    String? fetchedRole = await SessionService.getUserRole();
-    if (!mounted) {
-      debugPrint('[HomeScreen] Component unmounted after role fetch.');
+  // <<< MODIFIED: To fetch full user context >>>
+  Future<void> _fetchUserContextAndThenLoadFoods() async {
+    debugPrint('[HomeScreen] _fetchUserContextAndThenLoadFoods: Fetching user context...');
+    if (!mounted) return;
+
+    // Set loading true at the beginning
+    setStateIfMounted(() {
+      _isLoadingFoods = true;
+      _foodListErrorMessage = null;
+    });
+
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      debugPrint('[HomeScreen] User is null. Defaulting values.');
+      setStateIfMounted(() {
+        _currentUserRole = 'user';
+        _currentUsername = null;
+        _currentUserId = null;
+        // _isLoadingFoods will be set to false in _loadAllFoods if it also fails or completes
+      });
+      await _loadAllFoods(); // Still try to load foods, rules might apply or show error
       return;
     }
-    debugPrint('[HomeScreen] _fetchUserRoleAndThenLoadFoods: Raw role fetched from SessionService: "$fetchedRole".');
-    setStateIfMounted(() {
-      if (fetchedRole == null || fetchedRole.isEmpty) {
-        _currentUserRole = 'user'; // Default to 'user'
-        debugPrint('[HomeScreen] Fetched role was null or empty, defaulting _currentUserRole to "user".');
-      } else {
-        _currentUserRole = fetchedRole;
-      }
-    });
-    debugPrint('[HomeScreen] _fetchUserRoleAndThenLoadFoods: _currentUserRole finally set to: "$_currentUserRole". Now loading foods.');
+
+    _currentUserId = user.id;
+    // Fetch username directly from user metadata if SessionService.getUsername() doesn't exist
+    // Prioritize 'username', then 'user_name' from metadata.
+    if (user.userMetadata != null) {
+      _currentUsername = user.userMetadata!['username'] as String? ?? user.userMetadata!['user_name'] as String?;
+    } else {
+      _currentUsername = null;
+    }
+    _currentUserRole = await SessionService.getUserRole();
+
+    // Default role if null or empty after fetching
+    if (_currentUserRole == null || _currentUserRole!.isEmpty) {
+      _currentUserRole = 'user';
+      debugPrint('[HomeScreen] Fetched role was null/empty from SessionService, defaulting to "user".');
+    }
+
+    debugPrint('[HomeScreen] UserContext: ID=$_currentUserId, Username=$_currentUsername, Role=$_currentUserRole');
+
+    if (!mounted) {
+      debugPrint('[HomeScreen] Component unmounted after user context fetch.');
+      return;
+    }
+    // No explicit setStateIfMounted needed here for _currentUserId, _currentUsername, _currentUserRole
+    // because _loadAllFoods will trigger a rebuild when it completes or if it changes _isLoadingFoods.
     await _loadAllFoods();
   }
+
 
   @override
   void dispose() {
@@ -85,21 +127,58 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  // <<< ADDED: Helper methods for business logic >>>
+  bool _isSuperAdmin() {
+    return _currentUserId == _superAdminId;
+  }
+
+  bool _isSpecialUserPriceExempt() {
+    if (_currentUsername == null) return false;
+    return _specialUsernames.contains(_currentUsername);
+  }
+
+  bool _isOrderingTimeAllowed() {
+    if (_isSuperAdmin()) return true; // Super admin always allowed
+
+    final now = DateTime.now();
+    final hour = now.hour;
+    final minute = now.minute;
+
+    // Disallowed period: 10:31 AM up to and including 15:30 PM
+    if ((hour == 10 && minute >= 31) || // From 10:31 to 10:59
+        (hour > 10 && hour < 15) ||      // Hours 11, 12, 13, 14
+        (hour == 15 && minute <= 30)) {  // From 15:00 to 15:30
+      return false; // Within the restricted time
+    }
+    return true; // Allowed time
+  }
+
+  int _currentDayOfWeek() {
+    return DateTime.now().weekday; // Monday = 1, ..., Sunday = 7
+  }
+
   Future<void> _loadAllFoods() async {
     debugPrint('[HomeScreen] _loadAllFoods: Starting to load foods...');
     if (!mounted) {
       debugPrint('[HomeScreen] _loadAllFoods: Unmounted. Aborting food load.');
       return;
     }
-    setStateIfMounted(() {
-      _isLoadingFoods = true;
-      _foodListErrorMessage = null;
-    });
+    // Ensure loading state is set if called from refresh or if not already set
+    if (!_isLoadingFoods) {
+      setStateIfMounted(() {
+        _isLoadingFoods = true;
+        _foodListErrorMessage = null;
+      });
+    }
+    _allFoods.clear(); // Clear previous lists
+    _filteredFoodsForDropdown.clear();
+
 
     try {
       final response = await supabase
           .from('foods')
           .select('id, name, price, description, image_url, company_id')
+          .not('availability', 'eq', 'unavailable') // Assuming you add this filter
           .order('name', ascending: true);
 
       if (!mounted) {
@@ -115,6 +194,8 @@ class _HomeScreenState extends State<HomeScreen> {
             .map((item) => FoodModel.fromMap(item as Map<String, dynamic>))
             .toList();
         _foodListErrorMessage = null;
+        // IMPORTANT: Apply filters after loading all foods
+        _applyFoodFilters();
       }
     } on PostgrestException catch (e) {
       debugPrint('[HomeScreen] _loadAllFoods: Supabase Error - ${e.code}: ${e.message}');
@@ -131,6 +212,43 @@ class _HomeScreenState extends State<HomeScreen> {
         setStateIfMounted(() {
           _isLoadingFoods = false;
         });
+      }
+    }
+  }
+
+  // <<< ADDED: Method to apply food filters based on rules >>>
+  void _applyFoodFilters() {
+    // Super Admin and Special Price Exempt Users (Emtera, Gerald) have NO price filtering.
+    if (_isSuperAdmin() || _isSpecialUserPriceExempt()) {
+      _filteredFoodsForDropdown = List.from(_allFoods);
+    } else {
+      // General user price filtering
+      final dayOfWeek = _currentDayOfWeek();
+      bool applyPriceLimitToday;
+
+      if (dayOfWeek == DateTime.friday) {
+        applyPriceLimitToday = false; // No price limit on Friday for general users
+      } else {
+        // Monday-Thursday AND Saturday-Sunday, price limit applies
+        applyPriceLimitToday = true;
+      }
+
+      if (applyPriceLimitToday) {
+        _filteredFoodsForDropdown = _allFoods.where((food) => food.price <= _priceLimitGeneral).toList();
+      } else {
+        _filteredFoodsForDropdown = List.from(_allFoods); // No price limit this day
+      }
+    }
+
+    // If a selected food is no longer in the filtered list, clear selection.
+    // This handles cases where filters change (e.g., time passes into restricted period).
+    if (_selectedFoodForOrder != null && !_filteredFoodsForDropdown.any((f) => f.id == _selectedFoodForOrder!.id)) {
+      _clearOrderDetails(); // This calls setState
+    } else {
+      // If _clearOrderDetails wasn't called, we still might need to update if the list changed
+      // This setState is crucial to update the dropdown with the new _filteredFoodsForDropdown.
+      if (mounted) {
+        setState(() {});
       }
     }
   }
@@ -206,6 +324,55 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // --- APPLY CORRECTED BUSINESS LOGIC CHECKS ---
+    final String foodName = _selectedFoodForOrder!.name;
+    final double foodPrice = _selectedFoodForOrder!.price;
+
+    // Rule 1: Time Restriction (Applies to General Users AND Emtera/Gerald)
+    // Super Admin is exempt from this by _isOrderingTimeAllowed() itself.
+    if (!_isOrderingTimeAllowed()) {
+      final now = DateTime.now();
+      String currentFormattedTime = DateFormat('HH:mm').format(now);
+      String message = "Ordering is currently closed (Time: $currentFormattedTime).\n"
+          "Available: 15:31 - 10:30 AM daily.";
+      if (mounted) {
+        setStateIfMounted(() => _orderProcessingErrorMessage = message);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
+      }
+      return;
+    }
+
+    // Rule 2 & 3: Price Restriction (Applies ONLY to General Users)
+    // Super Admin and Special Users (Emtera/Gerald) are EXEMPT from price restrictions.
+    if (!_isSuperAdmin() && !_isSpecialUserPriceExempt()) {
+      final dayOfWeek = _currentDayOfWeek();
+      bool applyPriceLimitToday;
+
+      if (dayOfWeek == DateTime.friday) {
+        applyPriceLimitToday = false; // No price limit on Friday
+      } else {
+        // Monday-Thursday AND Saturday-Sunday, price limit applies
+        applyPriceLimitToday = true;
+      }
+
+      if (applyPriceLimitToday && foodPrice > _priceLimitGeneral) {
+        String dayMessagePart = "";
+        if (dayOfWeek >= DateTime.monday && dayOfWeek <= DateTime.thursday) {
+          dayMessagePart = "(Mon-Thu)";
+        } else if (dayOfWeek == DateTime.saturday || dayOfWeek == DateTime.sunday) {
+          dayMessagePart = "(Sat-Sun)";
+        }
+        String message = "'$foodName' (TSh ${foodPrice.toStringAsFixed(0)}) exceeds TSh ${_priceLimitGeneral.toStringAsFixed(0)} limit $dayMessagePart.";
+        if (mounted) {
+          setStateIfMounted(() => _orderProcessingErrorMessage = message);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red, duration: const Duration(seconds: 5)));
+        }
+        return;
+      }
+    }
+    // --- END BUSINESS LOGIC CHECKS ---
+
+
     setStateIfMounted(() {
       _isProcessingOrder = true;
       _orderProcessingErrorMessage = null;
@@ -219,11 +386,13 @@ class _HomeScreenState extends State<HomeScreen> {
         throw Exception("You must be logged in to send an order.");
       }
 
+      // Ensure food_id is also part of the main order data if your schema has it
       final mainOrderData = {
         'user_id': user.id,
-        'company_id': _selectedFoodForOrder!.profileId,
+        'company_id': _selectedFoodForOrder!.profileId, // From FoodModel
         'status': 'sent',
         'order_time': DateTime.now().toUtc().toIso8601String(),
+        'food_id': _selectedFoodForOrder!.id, // Link to the primary food item
       };
 
       final List<dynamic> orderResponse = await supabase
@@ -347,7 +516,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return "$minutes:$seconds";
   }
 
-  // Responsive layout helpers (still useful for content within the page)
   static const double _kMobileBreakpoint = 600;
   static const double _kTabletBreakpoint = 900;
 
@@ -355,17 +523,20 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isTablet(BuildContext context) =>
       MediaQuery.of(context).size.width >= _kMobileBreakpoint &&
           MediaQuery.of(context).size.width < _kTabletBreakpoint;
-  // bool _isDesktop(BuildContext context) => MediaQuery.of(context).size.width >= _kTabletBreakpoint; // Not used for drawer decision
 
   Widget _buildFoodDropdown(BuildContext context) {
     final theme = Theme.of(context);
-    if (_isLoadingFoods && _allFoods.isEmpty && _foodListErrorMessage == null) {
+
+    // Initial loading state for the whole dropdown section
+    if (_isLoadingFoods && _filteredFoodsForDropdown.isEmpty && _foodListErrorMessage == null) {
       return const Center(child: Padding(
         padding: EdgeInsets.symmetric(vertical: 20.0),
         child: CircularProgressIndicator(key: ValueKey("FoodDropdownLoading")),
       ));
     }
-    if (_foodListErrorMessage != null && _allFoods.isEmpty) {
+
+    // Error state after trying to load foods
+    if (_foodListErrorMessage != null && _filteredFoodsForDropdown.isEmpty) { // Check filtered list as well
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
@@ -383,7 +554,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ElevatedButton.icon(
                 icon: const Icon(Icons.refresh),
                 label: const Text("Retry"),
-                onPressed: _loadAllFoods,
+                // Retry should fetch user context again as role/username might affect filters
+                onPressed: _fetchUserContextAndThenLoadFoods,
                 style: theme.elevatedButtonTheme.style,
               )
             ],
@@ -391,18 +563,46 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
-    if (!_isLoadingFoods && _allFoods.isEmpty && _foodListErrorMessage == null) {
+
+    // Time restriction message (applies to general & special users, not super admin)
+    if (!_isOrderingTimeAllowed()) {
+      final now = DateTime.now();
+      String currentFormattedTime = DateFormat('HH:mm').format(now);
+      String orderingDisabledMessage = "Ordering is currently closed (Time: $currentFormattedTime).\nAvailable: 15:31 - 10:30 AM daily.";
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.timer_off_outlined, color: theme.colorScheme.primary, size: 48),
+              const SizedBox(height: 10),
+              Text(
+                orderingDisabledMessage,
+                style: TextStyle(fontSize: 16, color: theme.colorScheme.primary),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // No items available based on current filters (and not loading, no error)
+    if (!_isLoadingFoods && _filteredFoodsForDropdown.isEmpty && _foodListErrorMessage == null) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
           child: Text(
-            "No food items are currently available to order.",
+            "No food items are currently available to order based on current conditions.",
             style: TextStyle(fontSize: 16),
             textAlign: TextAlign.center,
           ),
         ),
       );
     }
+
+    // Display the dropdown if there are items and ordering is allowed by time
     double dropdownWidth = _isMobile(context) ? double.infinity : (_isTablet(context) ? 500 : 600);
     return Container(
       width: dropdownWidth,
@@ -417,7 +617,8 @@ class _HomeScreenState extends State<HomeScreen> {
           fillColor: theme.inputDecorationTheme.fillColor ?? theme.colorScheme.surfaceVariant.withOpacity(0.5),
         ),
         onSelected: _onFoodSelectedFromDropdown,
-        dropdownMenuEntries: _allFoods.map<DropdownMenuEntry<FoodModel>>((FoodModel food) {
+        // Use _filteredFoodsForDropdown
+        dropdownMenuEntries: _filteredFoodsForDropdown.map<DropdownMenuEntry<FoodModel>>((FoodModel food) {
           return DropdownMenuEntry<FoodModel>(
             value: food,
             label: "${food.name} - TSh ${food.price.toStringAsFixed(0)}/=",
@@ -596,7 +797,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.onPrimary)))
                         : const Text('Send Order'),
                     style: theme.elevatedButtonTheme.style,
-                    onPressed: _isProcessingOrder ? null : _sendOrder,
+                    onPressed: (_isProcessingOrder || !_isOrderingTimeAllowed()) ? null : _sendOrder, // Also disable button if time restricted
                   )
                 else if (showCancelButtonView)
                   Column(
@@ -678,22 +879,14 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Use _isMobile and _isTablet for responsive content, not for drawer visibility
     double horizontalPadding = _isMobile(context) ? 16.0 : (_isTablet(context) ? 32.0 : 64.0);
     double verticalPadding = _isMobile(context) ? 16.0 : 24.0;
-
-    // final bool isDesktopMode = _isDesktop(context); // This line is removed/commented for drawer logic
     final String? roleForDrawer = _currentUserRole;
 
-    debugPrint('[HomeScreen] Build Method -- START --');
-    debugPrint('[HomeScreen]   Role for Drawer (_currentUserRole): "$roleForDrawer"');
-    // debugPrint('[HomeScreen]   Is Desktop Mode: $isDesktopMode'); // No longer used for drawer logic
-    debugPrint('[HomeScreen]   Is Loading Foods: $_isLoadingFoods');
-    debugPrint('[HomeScreen]   All Foods Empty: ${_allFoods.isEmpty}');
-    debugPrint('[HomeScreen]   Food List Error Message: $_foodListErrorMessage');
-
-    if (roleForDrawer == null || (_isLoadingFoods && _allFoods.isEmpty && _foodListErrorMessage == null)) {
-      debugPrint('[HomeScreen] Showing main loading Scaffold: Role is "$roleForDrawer", or initial food list is loading.');
+    // Enhanced loading condition: show loading if role isn't determined OR if foods are genuinely still loading
+    if ((_currentUserRole == null && _currentUserId == null) || // If user context not yet fetched
+        (_isLoadingFoods && _allFoods.isEmpty && _foodListErrorMessage == null)) {
+      debugPrint('[HomeScreen] Showing main loading Scaffold (user context null or initial food list loading).');
       return Scaffold(
         key: const ValueKey("HomeScreenLoadingScaffold"),
         appBar: AppBar(title: const Text('GrubTap Loading...')),
@@ -702,25 +895,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     Widget? activeDrawer;
-    // Drawer is now always assigned if roleForDrawer is valid (non-null and non-empty),
-    // to ensure HomeScreen always has a drawer when role is determined.
-    if (roleForDrawer.isNotEmpty) {
+    if (roleForDrawer != null && roleForDrawer.isNotEmpty) {
       activeDrawer = CustomDrawer(userRole: roleForDrawer);
-      debugPrint('[HomeScreen] Assigning CustomDrawer to Scaffold. Role: "$roleForDrawer"');
-    } else {
-      debugPrint('[HomeScreen] Drawer is NULL because roleForDrawer is unexpectedly empty. THIS IS AN ISSUE!');
+    } else if (roleForDrawer == null) {
+      debugPrint('[HomeScreen] Drawer is NULL because roleForDrawer is null. This indicates user context might not be fully loaded or error occurred.');
+      // Potentially show a more specific loading/error state for the drawer if this is an issue.
     }
-    debugPrint('[HomeScreen] Build Method -- END --');
+
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('GrubTap'),
         iconTheme: theme.appBarTheme.iconTheme,
       ),
-      drawer: activeDrawer, // Assign the drawer based on the logic above
+      drawer: activeDrawer,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadAllFoods,
+          // On refresh, re-fetch user context which then re-fetches foods and applies filters
+          onRefresh: _fetchUserContextAndThenLoadFoods,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
